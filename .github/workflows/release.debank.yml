@@ -1,0 +1,49 @@
+name: "Release new artifacts"
+
+on:
+  release:
+    types:
+      - created
+  workflow_dispatch:
+
+env:
+  REGISTRY: 294354037686.dkr.ecr.ap-northeast-1.amazonaws.com
+  IMAGE: blockchain-cdk-erigon
+  DOCKERFILE: Dockerfile.debian
+
+jobs:
+  build-package:
+    runs-on: [self-hosted, default-go-builder]
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.22.x
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: tibdex/github-app-token@v1
+        id: generate-token
+        with:
+          app_id: ${{ secrets.RELEASE_MANAGER_APP_ID }}
+          private_key: ${{ secrets.RELEASE_MANAGER_APP_SECRET }}
+
+      - name: Set env
+        run: |
+          echo "REVISION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+          echo "ARCHIVE_FILE_NAME=erigon-${GITHUB_REF#refs/*/}-linux-amd64" >> $GITHUB_ENV
+
+      - name: Build image and push to ECR
+        run: |
+          docker build --build-arg ACCESS_TOKEN=${{ steps.generate-token.outputs.token }} -t ${REGISTRY}/${IMAGE}:${REVISION} -f ${DOCKERFILE} .
+          docker push ${REGISTRY}/${IMAGE}:${REVISION}
+          docker run --name dryrun --rm ${REGISTRY}/${IMAGE}:${REVISION} --version
+          docker rmi ${REGISTRY}/${IMAGE}:${REVISION}
+
+      - name: Lark Notification
+        continue-on-error: true
+        run: |
+          notiv3 "Blockchain client Erigon's image pushed 🎉" ${REGISTRY}/${IMAGE}:${REVISION}
