@@ -127,6 +127,7 @@ func (api *PreExecAPIImpl) TraceMany(ctx context.Context, origins []PreArgs) ([]
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 	chainConfig, err := api.chainConfig(tx)
 	if err != nil {
 		return nil, err
