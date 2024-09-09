@@ -207,6 +207,7 @@ func (api *PreExecAPIImpl) TraceMany(ctx context.Context, origins []PreArgs) ([]
 		txHash := common.BigToHash(big.NewInt(int64(i)))
 		blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, tx, api._blockReader)
 		txCtx := core.NewEVMTxContext(msg)
+		state.Prepare(txHash, block.Hash(), i)
 
 		var ot OeTracer
 		traceResult := &TraceCallResult{Trace: []*ParityTrace{}}
