@@ -92,6 +92,12 @@ func (bcc *BatchCounterCollector) AddNewTransactionCounters(txCounters *Transact
 	return bcc.CheckForOverflow(false) //no need to calculate the merkle proof here
 }
 
+func (bcc *BatchCounterCollector) RemovePreviousTransactionCounters() {
+	lastTx := bcc.transactions[len(bcc.transactions)-1]
+	bcc.UndoTransactionCountersCache(lastTx)
+	bcc.transactions = bcc.transactions[:len(bcc.transactions)-1]
+}
+
 func (bcc *BatchCounterCollector) ClearTransactionCounters() {
 	bcc.transactions = bcc.transactions[:0]
 }
@@ -158,7 +164,7 @@ func (bcc *BatchCounterCollector) CheckForOverflow(verifyMerkleProof bool) (bool
 		for _, v := range combined {
 			logText += fmt.Sprintf(" %s: initial: %v used: %v (remaining: %v)", v.name, v.initialAmount, v.used, v.remaining)
 		}
-		log.Info(logText)
+		log.Debug(logText)
 	}
 
 	return overflow, nil
@@ -230,11 +236,11 @@ func (bcc *BatchCounterCollector) CombineCollectors(verifyMerkleProof bool) (Cou
 	return combined, nil
 }
 
-// CombineCollectors takes the batch level data from all transactions and combines these counters with each transactions'
+// CombineCollectorsNoChanges takes the batch level data from all transactions and combines these counters with each transactions'
 // rlp level counters and execution level counters
 // this one returns the counters as they are so far, without adding processBatchLevelData, processChangeL2Block and decodeChangeL2BlockTx
 // used to save batch counter progress without adding the said counters twice
-func (bcc *BatchCounterCollector) CombineCollectorsNoChanges(verifyMerkleProof bool) Counters {
+func (bcc *BatchCounterCollector) CombineCollectorsNoChanges() Counters {
 	// combine all the counters we have so far
 
 	// if we have external coutners use them, otherwise create new
@@ -284,5 +290,17 @@ func (bcc *BatchCounterCollector) UpdateExecutionAndProcessingCountersCache(txCo
 
 	for k, v := range txCounters.processingCounters.counters {
 		bcc.processingCombinedCounters[k].used += v.used
+	}
+}
+
+func (bcc *BatchCounterCollector) UndoTransactionCountersCache(txCounters *TransactionCounter) {
+	for k, v := range txCounters.rlpCounters.counters {
+		bcc.rlpCombinedCounters[k].used -= v.used
+	}
+	for k, v := range txCounters.executionCounters.counters {
+		bcc.executionCombinedCounters[k].used -= v.used
+	}
+	for k, v := range txCounters.processingCounters.counters {
+		bcc.processingCombinedCounters[k].used -= v.used
 	}
 }

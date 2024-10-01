@@ -11,7 +11,6 @@ import (
 	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
 	"github.com/gateway-fm/cdk-erigon-lib/common/hexutility"
 	"github.com/gateway-fm/cdk-erigon-lib/kv"
-	jsoniter "github.com/json-iterator/go"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon/common/hexutil"
@@ -20,7 +19,6 @@ import (
 	eritypes "github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
-	"github.com/ledgerwatch/erigon/eth/tracers"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/zk/hermez_db"
@@ -61,10 +59,12 @@ type ZkEvmAPI interface {
 	GetExitRootsByGER(ctx context.Context, globalExitRoot common.Hash) (*ZkExitRoots, error)
 	GetL2BlockInfoTree(ctx context.Context, blockNum rpc.BlockNumberOrHash) (json.RawMessage, error)
 	EstimateCounters(ctx context.Context, argsOrNil *zkevmRPCTransaction) (json.RawMessage, error)
-	TraceTransactionCounters(ctx context.Context, hash common.Hash, config *tracers.TraceConfig_ZkEvm, stream *jsoniter.Stream) error
 	GetBatchCountersByNumber(ctx context.Context, batchNumRpc rpc.BlockNumber) (res json.RawMessage, err error)
 	GetExitRootTable(ctx context.Context) ([]l1InfoTreeData, error)
+	GetVersionHistory(ctx context.Context) (json.RawMessage, error)
 }
+
+const getBatchWitness = "getBatchWitness"
 
 // APIImpl is implementation of the ZkEvmAPI interface based on remote Db access
 type ZkEvmAPIImpl struct {
@@ -75,6 +75,17 @@ type ZkEvmAPIImpl struct {
 	config          *ethconfig.Config
 	l1Syncer        *syncer.L1Syncer
 	l2SequencerUrl  string
+	semaphores      map[string]chan struct{}
+}
+
+func (api *ZkEvmAPIImpl) initializeSemaphores(functionLimits map[string]int) {
+	api.semaphores = make(map[string]chan struct{})
+
+	for funcName, limit := range functionLimits {
+		if limit != 0 {
+			api.semaphores[funcName] = make(chan struct{}, limit)
+		}
+	}
 }
 
 // NewEthAPI returns ZkEvmAPIImpl instance
@@ -86,7 +97,8 @@ func NewZkEvmAPI(
 	l1Syncer *syncer.L1Syncer,
 	l2SequencerUrl string,
 ) *ZkEvmAPIImpl {
-	return &ZkEvmAPIImpl{
+
+	a := &ZkEvmAPIImpl{
 		ethApi:          base,
 		db:              db,
 		ReturnDataLimit: returnDataLimit,
@@ -94,6 +106,12 @@ func NewZkEvmAPI(
 		l1Syncer:        l1Syncer,
 		l2SequencerUrl:  l2SequencerUrl,
 	}
+
+	a.initializeSemaphores(map[string]int{
+		getBatchWitness: zkConfig.Zk.RpcGetBatchWitnessConcurrencyLimit,
+	})
+
+	return a
 }
 
 // ConsolidatedBlockNumber returns the latest consolidated block number
@@ -357,7 +375,12 @@ func generateBatchData(
 	batchBlocks []*eritypes.Block,
 	forkId uint64,
 ) (batchL2Data []byte, err error) {
-	lastBlockNoInPreviousBatch := batchBlocks[0].NumberU64() - 1
+
+	lastBlockNoInPreviousBatch := uint64(0)
+	if batchBlocks[0].NumberU64() != 0 {
+		lastBlockNoInPreviousBatch = batchBlocks[0].NumberU64() - 1
+	}
+
 	lastBlockInPreviousBatch, err := rawdb.ReadBlockByNumber(tx, lastBlockNoInPreviousBatch)
 	if err != nil {
 		return nil, err
@@ -448,7 +471,7 @@ func (api *ZkEvmAPIImpl) GetBatchByNumber(ctx context.Context, batchNumber rpc.B
 	if err != nil {
 		return nil, err
 	}
-	if !found {
+	if !found && batchNo != 0 {
 		return nil, nil
 	}
 
@@ -466,9 +489,6 @@ func (api *ZkEvmAPIImpl) GetBatchByNumber(ctx context.Context, batchNumber rpc.B
 	// last block in batch data
 	batch.Coinbase = block.Coinbase()
 	batch.StateRoot = block.Root()
-
-	// TODO: this logic is wrong it is the L1 verification timestamp we need
-	batch.Timestamp = types.ArgUint64(block.Time())
 
 	// block numbers in batch
 	blocksInBatch, err := hermezDb.GetL2BlockNosByBatch(batchNo)
@@ -588,6 +608,12 @@ func (api *ZkEvmAPIImpl) GetBatchByNumber(ctx context.Context, batchNumber rpc.B
 	if seq != nil {
 		batch.SendSequencesTxHash = &seq.L1TxHash
 	}
+
+	// timestamp - ts of highest block in the batch always
+	if block != nil {
+		batch.Timestamp = types.ArgUint64(block.Time())
+	}
+
 	_, found, err = hermezDb.GetLowestBlockInBatch(batchNo + 1)
 	if err != nil {
 		return nil, err
@@ -617,7 +643,7 @@ func (api *ZkEvmAPIImpl) GetBatchByNumber(ctx context.Context, batchNumber rpc.B
 	}
 
 	// local exit root
-	localExitRoot, err := utils.GetBatchLocalExitRoot(batchNo, hermezDb, tx)
+	localExitRoot, err := utils.GetBatchLocalExitRootFromSCStorageForLatestBlock(batchNo, hermezDb, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -822,6 +848,18 @@ func (api *ZkEvmAPIImpl) GetBlockRangeWitness(ctx context.Context, startBlockNrO
 }
 
 func (api *ZkEvmAPIImpl) getBatchWitness(ctx context.Context, tx kv.Tx, batchNum uint64, debug bool, mode WitnessMode) (hexutility.Bytes, error) {
+
+	// limit in-flight requests by name
+	semaphore := api.semaphores[getBatchWitness]
+	if semaphore != nil {
+		select {
+		case semaphore <- struct{}{}:
+			defer func() { <-semaphore }()
+		default:
+			return nil, fmt.Errorf("busy")
+		}
+	}
+
 	if api.ethApi.historyV3(tx) {
 		return nil, fmt.Errorf("not supported by Erigon3")
 	}
@@ -1025,6 +1063,28 @@ func (api *ZkEvmAPIImpl) GetLatestGlobalExitRoot(ctx context.Context) (common.Ha
 	}
 
 	return ger, nil
+}
+
+func (api *ZkEvmAPIImpl) GetVersionHistory(ctx context.Context) (json.RawMessage, error) {
+	// get values from the db
+	tx, err := api.db.BeginRo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	hermezDb := hermez_db.NewHermezDbReader(tx)
+	versions, err := hermezDb.GetVersionHistory()
+	if err != nil {
+		return nil, err
+	}
+
+	versionsJson, err := json.Marshal(versions)
+	if err != nil {
+		return nil, err
+	}
+
+	return versionsJson, nil
 }
 
 type l1InfoTreeData struct {
@@ -1350,12 +1410,10 @@ func populateBatchDetails(batch *types.Batch) (json.RawMessage, error) {
 	jBatch["localExitRoot"] = batch.LocalExitRoot
 	jBatch["sendSequencesTxHash"] = batch.SendSequencesTxHash
 	jBatch["verifyBatchTxHash"] = batch.VerifyBatchTxHash
+	jBatch["accInputHash"] = batch.AccInputHash
 
 	if batch.ForcedBatchNumber != nil {
 		jBatch["forcedBatchNumber"] = batch.ForcedBatchNumber
-	}
-	if batch.AccInputHash != (common.Hash{}) {
-		jBatch["accInputHash"] = batch.AccInputHash
 	}
 	jBatch["closed"] = batch.Closed
 	if len(batch.BatchL2Data) > 0 {
