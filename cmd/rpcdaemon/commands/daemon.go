@@ -14,10 +14,11 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/zk/sequencer"
 	"github.com/ledgerwatch/erigon/zk/syncer"
+	txpool2 "github.com/ledgerwatch/erigon/zk/txpool"
 )
 
 // APIList describes the list of available RPC apis
-func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
+func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, rawPool *txpool2.TxPool, mining txpool.MiningClient,
 	filters *rpchelper.Filters, stateCache kvcache.Cache,
 	blockReader services.FullBlockReader, agg *libstate.AggregatorV3, cfg httpcfg.HttpCfg, engine consensus.EngineReader,
 	ethCfg *ethconfig.Config, l1Syncer *syncer.L1Syncer,
@@ -34,9 +35,10 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 	base.SetGasless(ethCfg.Gasless)
 	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, ethCfg)
 	erigonImpl := NewErigonAPI(base, db, eth)
-	txpoolImpl := NewTxPoolAPI(base, db, txPool, rpcUrl)
+	txpoolImpl := NewTxPoolAPI(base, db, txPool, rawPool, rpcUrl)
 	netImpl := NewNetAPIImpl(eth)
-	debugImpl := NewPrivateDebugAPI(base, db, cfg.Gascap)
+	debugImpl := NewPrivateDebugAPI(base, db, cfg.Gascap, ethCfg)
+	preImpl := NewPreExecAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, nil)
 	traceImpl := NewTraceAPI(base, db, &cfg)
 	web3Impl := NewWeb3APIImpl(eth)
 	dbImpl := NewDBAPIImpl() /* deprecated */
@@ -45,7 +47,7 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 	borImpl := NewBorAPI(base, db, borDb) // bor (consensus) specific
 	otsImpl := NewOtterscanAPI(base, db)
 	gqlImpl := NewGraphQLAPI(base, db)
-	zkEvmImpl := NewZkEvmAPI(ethImpl, db, cfg.ReturnDataLimit, ethCfg, l1Syncer)
+	zkEvmImpl := NewZkEvmAPI(ethImpl, db, cfg.ReturnDataLimit, ethCfg, l1Syncer, rpcUrl)
 
 	if cfg.GraphQLEnabled {
 		list = append(list, rpc.API{
@@ -70,6 +72,13 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 				Namespace: "debug",
 				Public:    true,
 				Service:   PrivateDebugAPI(debugImpl),
+				Version:   "1.0",
+			})
+		case "pre":
+			list = append(list, rpc.API{
+				Namespace: "pre",
+				Public:    true,
+				Service:   PreExecAPI(preImpl),
 				Version:   "1.0",
 			})
 		case "net":

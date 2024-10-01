@@ -141,10 +141,10 @@ func TestGetAndSetLatest(t *testing.T) {
 			} else {
 				err = tc.writeVerificationMethod(db, tc.l1BlockNo, tc.batchNo, tc.l1TxHashBytes, tc.stateRoot)
 			}
-			assert.Nil(t, err)
+			require.NoError(t, err)
 
 			info, err := db.getLatest(tc.table)
-			assert.Nil(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tc.batchNo, info.BatchNo)
 			assert.Equal(t, tc.l1BlockNo, info.L1BlockNo)
 			assert.Equal(t, tc.l1TxHashBytes, info.L1TxHash)
@@ -176,7 +176,7 @@ func TestGetAndSetLatestUnordered(t *testing.T) {
 
 	for _, tc := range testCases {
 		err := tc.writeMethod(db, tc.l1BlockNo, tc.batchNo, tc.l1TxHashBytes, tc.stateRoot)
-		assert.Nil(t, err)
+		require.NoError(t, err)
 
 		if tc.batchNo > highestBatchNo {
 			highestBatchNo = tc.batchNo
@@ -184,7 +184,7 @@ func TestGetAndSetLatestUnordered(t *testing.T) {
 	}
 
 	info, err := db.getLatest(L1VERIFICATIONS)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, highestBatchNo, info.BatchNo)
 
 	cleanup()
@@ -347,12 +347,12 @@ func TestTruncateBlockBatches(t *testing.T) {
 	}
 
 	l2BlockNo := uint64(500)
-	err := db.TruncateBlockBatches(l2BlockNo)
+	err := db.DeleteBlockBatches(l2BlockNo+1, 1000)
 	require.NoError(t, err)
 
 	for i := l2BlockNo + 1; i <= 1000; i++ {
 		_, err := db.GetBatchNoByL2Block(i)
-		require.Equal(t, err, nil)
+		require.NoError(t, err)
 	}
 
 	for i := uint64(1); i <= l2BlockNo; i++ {

@@ -15,7 +15,6 @@ import (
 	"encoding/binary"
 
 	ethTypes "github.com/ledgerwatch/erigon/core/types"
-	types "github.com/ledgerwatch/erigon/zk/rpcdaemon"
 	"github.com/ledgerwatch/erigon/rpc"
 )
 
@@ -27,6 +26,10 @@ var errorShortResponseLT32 = fmt.Errorf("response too short to contain hash data
 var errorShortResponseLT96 = fmt.Errorf("response too short to contain last batch number data")
 
 const rollupSequencedBatchesSignature = "0x25280169" // hardcoded abi signature
+const globalExitRootManager = "0xd02103ca"
+const rollupManager = "0x49b7b802"
+const admin = "0xf851a440"
+const trustedSequencer = "0xcfa8ed47"
 
 type IEtherman interface {
 	HeaderByNumber(ctx context.Context, blockNumber *big.Int) (*ethTypes.Header, error)
@@ -34,6 +37,7 @@ type IEtherman interface {
 	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]ethTypes.Log, error)
 	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	TransactionByHash(ctx context.Context, hash common.Hash) (ethTypes.Transaction, bool, error)
+	TransactionReceipt(ctx context.Context, txHash common.Hash) (*ethTypes.Receipt, error)
 }
 
 type fetchJob struct {
@@ -48,6 +52,7 @@ type jobResult struct {
 }
 
 type L1Syncer struct {
+	ctx                 context.Context
 	etherMans           []IEtherman
 	ethermanIndex       uint8
 	ethermanMtx         *sync.Mutex
@@ -71,8 +76,9 @@ type L1Syncer struct {
 	highestBlockType string // finalized, latest, safe
 }
 
-func NewL1Syncer(etherMans []IEtherman, l1ContractAddresses []common.Address, topics [][]common.Hash, blockRange, queryDelay uint64, highestBlockType string) *L1Syncer {
+func NewL1Syncer(ctx context.Context, etherMans []IEtherman, l1ContractAddresses []common.Address, topics [][]common.Hash, blockRange, queryDelay uint64, highestBlockType string) *L1Syncer {
 	return &L1Syncer{
+		ctx:                 ctx,
 		etherMans:           etherMans,
 		ethermanIndex:       0,
 		ethermanMtx:         &sync.Mutex{},
@@ -187,55 +193,43 @@ func (s *L1Syncer) GetTransaction(hash common.Hash) (ethTypes.Transaction, bool,
 }
 
 func (s *L1Syncer) GetOldAccInputHash(ctx context.Context, addr *common.Address, rollupId, batchNum uint64) (common.Hash, error) {
-	loopCount := 0
-	for {
-		if loopCount == 10 {
-			return common.Hash{}, fmt.Errorf("too many retries")
-		}
-
-		h, previousBatch, err := s.callGetRollupSequencedBatches(ctx, addr, rollupId, batchNum)
-		if err != nil {
-			// if there is an error previousBatch value is incorrect so we can just try a single batch behind
-			if batchNum > 0 && (err == errorShortResponseLT32 || err == errorShortResponseLT96) {
-				batchNum--
-				continue
-			}
-
-			log.Debug("Error getting rollup sequenced batch", "err", err)
-			time.Sleep(time.Duration(loopCount*2) * time.Second)
-			loopCount++
-			continue
-		}
-
-		if h != types.ZeroHash {
-			return h, nil
-		}
-
-		// h is 0 and if previousBatch is 0 then we can just try a single batch behind
-		if batchNum > 0 && previousBatch == 0 {
-			batchNum--
-			continue
-		}
-
-		// if the hash is zero, we need to go back to the previous batch
-		batchNum = previousBatch
-		loopCount++
+	h, _, err := s.callGetRollupSequencedBatches(ctx, addr, rollupId, batchNum)
+	if err != nil {
+		return common.Hash{}, err
 	}
+
+	return h, nil
+}
+
+func (s *L1Syncer) GetL1BlockTimeStampByTxHash(ctx context.Context, txHash common.Hash) (uint64, error) {
+	em := s.getNextEtherman()
+	r, err := em.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return 0, err
+	}
+
+	header, err := em.HeaderByNumber(context.Background(), r.BlockNumber)
+	if err != nil {
+		return 0, err
+	}
+
+	return header.Time, nil
 }
 
 func (s *L1Syncer) L1QueryHeaders(logs []ethTypes.Log) (map[uint64]*ethTypes.Header, error) {
-	// more thread causes error on remote rpc server
-	headers := make([]*ethTypes.Header, 0)
+	logsSize := len(logs)
 
 	// queue up all the logs
-	logQueue := make(chan ethTypes.Log, len(logs))
+	logQueue := make(chan *ethTypes.Log, logsSize)
 	defer close(logQueue)
-	for i := 0; i < len(logs); i++ {
-		logQueue <- logs[i]
+	for i := 0; i < logsSize; i++ {
+		logQueue <- &logs[i]
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(len(logs))
+	wg.Add(logsSize)
+
+	headersQueue := make(chan *ethTypes.Header, logsSize)
 
 	process := func(em IEtherman) {
 		ctx := context.Background()
@@ -252,7 +246,7 @@ func (s *L1Syncer) L1QueryHeaders(logs []ethTypes.Log) (map[uint64]*ethTypes.Hea
 				logQueue <- l
 				continue
 			}
-			headers = append(headers, header)
+			headersQueue <- header
 			wg.Done()
 		}
 	}
@@ -265,20 +259,14 @@ func (s *L1Syncer) L1QueryHeaders(logs []ethTypes.Log) (map[uint64]*ethTypes.Hea
 	}
 
 	wg.Wait()
+	close(headersQueue)
 
 	headersMap := map[uint64]*ethTypes.Header{}
-	for i := 0; i < len(headers); i++ {
-		headersMap[headers[i].Number.Uint64()] = headers[i]
+	for header := range headersQueue {
+		headersMap[header.Number.Uint64()] = header
 	}
 
 	return headersMap, nil
-}
-
-func tryToLogL1QueryBlocks(logPrefix string, current, total, threadNum int, durationTick *time.Time) {
-	if time.Since(*durationTick).Seconds() > 10 {
-		log.Info(fmt.Sprintf("[%s] %s %d/%d", logPrefix, "Query L1 blocks", current, total), "thread", threadNum)
-		*durationTick = time.Now()
-	}
 }
 
 func (s *L1Syncer) getLatestL1Block() (uint64, error) {
@@ -307,9 +295,12 @@ func (s *L1Syncer) getLatestL1Block() (uint64, error) {
 }
 
 func (s *L1Syncer) queryBlocks() error {
-	startBlock := s.lastCheckedL1Block.Load()
+	// Fixed receiving duplicate log events.
+	// lastCheckedL1Block means that it has already been checked in the previous cycle.
+	// It should not be checked again in the new cycle, so +1 is added here.
+	startBlock := s.lastCheckedL1Block.Load() + 1
 
-	log.Debug("GetHighestSequence", "startBlock", s.lastCheckedL1Block.Load())
+	log.Debug("GetHighestSequence", "startBlock", startBlock)
 
 	// define the blocks we're going to fetch up front
 	fetches := make([]fetchJob, 0)
@@ -352,6 +343,9 @@ func (s *L1Syncer) queryBlocks() error {
 loop:
 	for {
 		select {
+		case <-s.ctx.Done():
+			close(stop)
+			break loop
 		case res := <-results:
 			complete++
 			if res.Error != nil {
@@ -451,4 +445,38 @@ func (s *L1Syncer) callGetRollupSequencedBatches(ctx context.Context, addr *comm
 	lastBatchNumber := binary.BigEndian.Uint64(resp[88:96])
 
 	return h, lastBatchNumber, nil
+}
+
+func (s *L1Syncer) CallAdmin(ctx context.Context, addr *common.Address) (common.Address, error) {
+	return s.callGetAddress(ctx, addr, admin)
+}
+
+func (s *L1Syncer) CallRollupManager(ctx context.Context, addr *common.Address) (common.Address, error) {
+	return s.callGetAddress(ctx, addr, rollupManager)
+}
+
+func (s *L1Syncer) CallGlobalExitRootManager(ctx context.Context, addr *common.Address) (common.Address, error) {
+	return s.callGetAddress(ctx, addr, globalExitRootManager)
+}
+
+func (s *L1Syncer) CallTrustedSequencer(ctx context.Context, addr *common.Address) (common.Address, error) {
+	return s.callGetAddress(ctx, addr, trustedSequencer)
+}
+
+func (s *L1Syncer) callGetAddress(ctx context.Context, addr *common.Address, data string) (common.Address, error) {
+	em := s.getNextEtherman()
+	resp, err := em.CallContract(ctx, ethereum.CallMsg{
+		To:   addr,
+		Data: common.FromHex(data),
+	}, nil)
+
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	if len(resp) < 20 {
+		return common.Address{}, errorShortResponseLT32
+	}
+
+	return common.BytesToAddress(resp[len(resp)-20:]), nil
 }

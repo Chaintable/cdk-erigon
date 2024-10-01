@@ -1,18 +1,19 @@
 package types
 
 import (
+	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
 	"github.com/ledgerwatch/erigon/zk/datastream/proto/github.com/0xPolygonHermez/zkevm-node/state/datastream"
 	"google.golang.org/protobuf/proto"
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
 )
 
 type BatchType uint32
 
 var (
 	BatchTypeUnspecified BatchType = 0
-	BatchTypeRegular               = 1
-	BatchTypeForced                = 2
-	BatchTypeInjected              = 3
+	BatchTypeRegular     BatchType = 1
+	BatchTypeForced      BatchType = 2
+	BatchTypeInjected    BatchType = 3
+	BatchTypeInvalid     BatchType = 4
 )
 
 type BatchStartProto struct {
@@ -40,6 +41,7 @@ func (b *BatchStartProto) Type() EntryType {
 }
 
 type BatchEnd struct {
+	Number        uint64
 	LocalExitRoot libcommon.Hash
 	StateRoot     libcommon.Hash
 	Debug         Debug
@@ -60,10 +62,11 @@ func UnmarshalBatchStart(data []byte) (*BatchStart, error) {
 	}
 
 	return &BatchStart{
-		Number:  batch.Number,
-		ForkId:  batch.ForkId,
-		ChainId: batch.ChainId,
-		Debug:   ProcessDebug(batch.Debug),
+		Number:    batch.Number,
+		ForkId:    batch.ForkId,
+		ChainId:   batch.ChainId,
+		Debug:     ProcessDebug(batch.Debug),
+		BatchType: BatchType(batch.Type),
 	}, nil
 }
 
@@ -74,6 +77,7 @@ func UnmarshalBatchEnd(data []byte) (*BatchEnd, error) {
 	}
 
 	return &BatchEnd{
+		Number:        batchEnd.Number,
 		LocalExitRoot: libcommon.BytesToHash(batchEnd.LocalExitRoot),
 		StateRoot:     libcommon.BytesToHash(batchEnd.StateRoot),
 		Debug:         ProcessDebug(batchEnd.Debug),

@@ -138,7 +138,7 @@ func MakeHeaderGetter(requireCanonical bool, tx kv.Tx, headerReader services.Hea
 }
 
 type ReusableCaller struct {
-	evm             *vm.EVM
+	evm             vm.VMInterface
 	intraBlockState *state.IntraBlockState
 	gasCap          uint64
 	baseFee         *uint256.Int
@@ -203,6 +203,8 @@ func NewReusableCaller(
 	headerReader services.HeaderReader,
 	chainConfig *chain.Config,
 	callTimeout time.Duration,
+	VirtualCountersSmtReduction float64,
+	useCounters bool,
 ) (*ReusableCaller, error) {
 	ibs := state.New(stateReader)
 
@@ -240,26 +242,37 @@ func NewReusableCaller(
 
 	smtDepth := smt.GetDepth()
 
+	to := msg.To()
+	if to == nil {
+		to = &libcommon.Address{}
+	}
+
 	// transaction from message
 	transaction := types.NewTransaction(
 		msg.Nonce(),
-		*msg.To(),
+		*to,
 		msg.Value(),
 		msg.Gas(),
 		msg.GasPrice(),
 		msg.Data(),
 	)
 
-	batchCounters := vm.NewBatchCounterCollector(smtDepth, uint16(forkId), false)
-	txCounters := vm.NewTransactionCounter(transaction, smtDepth, false)
+	var batchCounters *vm.BatchCounterCollector
+	var counterCollector *vm.CounterCollector
+	if useCounters {
+		batchCounters = vm.NewBatchCounterCollector(smtDepth, uint16(forkId), VirtualCountersSmtReduction, false, nil)
+		txCounters := vm.NewTransactionCounter(transaction, smtDepth, uint16(forkId), VirtualCountersSmtReduction, false)
 
-	_, err = batchCounters.AddNewTransactionCounters(txCounters)
-	if err != nil {
-		return nil, err
+		_, err = batchCounters.AddNewTransactionCounters(txCounters)
+		if err != nil {
+			return nil, err
+		}
+
+		counterCollector = txCounters.ExecutionCounters()
 	}
 
-	zkConfig := vm.ZkConfig{Config: vm.Config{NoBaseFee: true}, CounterCollector: txCounters.ExecutionCounters()}
-	evm := vm.NewZkEVM(blockCtx, txCtx, ibs, chainConfig, zkConfig)
+	zkVmConfig := vm.ZkConfig{Config: vm.Config{NoBaseFee: true}, CounterCollector: counterCollector}
+	evm := vm.NewZkEVM(blockCtx, txCtx, ibs, chainConfig, zkVmConfig)
 
 	return &ReusableCaller{
 		evm:             evm,

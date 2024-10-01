@@ -30,6 +30,8 @@ const TableAccountValues = "HermezSmtAccountValues"
 const TableMetadata = "HermezSmtMetadata"
 const TableHashKey = "HermezSmtHashKey"
 
+var HermezSmtTables = []string{TableSmt, TableStats, TableAccountValues, TableMetadata, TableHashKey}
+
 type EriDb struct {
 	kvTx kv.RwTx
 	tx   SmtDbTx
@@ -112,6 +114,7 @@ func (m *EriDb) RollbackBatch() {
 	}
 	m.tx.Rollback()
 	m.tx = m.kvTx
+	m.kvTxRo = m.kvTx
 }
 
 func (m *EriRoDb) GetLastRoot() (*big.Int, error) {

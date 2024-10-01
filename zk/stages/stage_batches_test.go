@@ -14,8 +14,8 @@ import (
 	"github.com/ledgerwatch/erigon/zk/datastream/types"
 	"github.com/ledgerwatch/erigon/zk/hermez_db"
 
-	"github.com/stretchr/testify/require"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnwindBatches(t *testing.T) {
@@ -27,15 +27,14 @@ func TestUnwindBatches(t *testing.T) {
 	require.NoError(t, err)
 	for i := 1; i <= currentBlockNumber; i++ {
 		fullL2Blocks = append(fullL2Blocks, types.FullL2Block{
-			BatchNumber:     uint64(i / 2),
+			BatchNumber:     1 + uint64(i/2),
 			L2BlockNumber:   uint64(i),
 			Timestamp:       int64(i) * 10000,
 			DeltaTimestamp:  uint32(i) * 10,
 			L1InfoTreeIndex: uint32(i) + 20,
 			GlobalExitRoot:  common.Hash{byte(i)},
 			Coinbase:        common.Address{byte(i)},
-			ForkId:          uint64(i) / 3,
-			ChainId:         uint64(1),
+			ForkId:          1 + uint64(i)/3,
 			L1BlockHash:     common.Hash{byte(i)},
 			L2Blockhash:     common.Hash{byte(i)},
 			StateRoot:       common.Hash{byte(i)},
@@ -53,11 +52,11 @@ func TestUnwindBatches(t *testing.T) {
 	gerUpdates := []types.GerUpdate{}
 	for i := currentBlockNumber + 1; i <= currentBlockNumber+5; i++ {
 		gerUpdates = append(gerUpdates, types.GerUpdate{
-			BatchNumber:    uint64(i / 2),
+			BatchNumber:    1 + uint64(i/2),
 			Timestamp:      uint64(i) * 10000,
 			GlobalExitRoot: common.Hash{byte(i)},
 			Coinbase:       common.Address{byte(i)},
-			ForkId:         uint16(i) / 3,
+			ForkId:         1 + uint16(i)/3,
 			ChainId:        uint32(1),
 			StateRoot:      common.Hash{byte(i)},
 		})
@@ -93,7 +92,7 @@ func TestUnwindBatches(t *testing.T) {
 	/////////
 	// ACT //
 	/////////
-	err = SpawnStageBatches(s, u, ctx, tx, cfg, true, true)
+	err = SpawnStageBatches(s, u, ctx, tx, cfg, true)
 	require.NoError(t, err)
 	tx.Commit()
 
@@ -114,6 +113,14 @@ func TestUnwindBatches(t *testing.T) {
 	for _, bucket := range buckets {
 		//currently not decrementing sequence
 		if bucket == kv.Sequence {
+			continue
+		}
+		// this table is deleted in execution stage
+		if bucket == kv.TX_PRICE_PERCENTAGE {
+			continue
+		}
+		// header tables (number, canonical, headers)
+		if bucket == kv.HeaderNumber || bucket == kv.HeaderCanonical || bucket == kv.Headers {
 			continue
 		}
 		size, err := tx3.BucketSize(bucket)

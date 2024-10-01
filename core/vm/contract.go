@@ -17,8 +17,8 @@
 package vm
 
 import (
-	"github.com/holiman/uint256"
 	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
+	"github.com/holiman/uint256"
 )
 
 // ContractRef is a reference to the contract's backing object
@@ -60,7 +60,8 @@ type Contract struct {
 	value *uint256.Int
 
 	// zkevm
-	IsCreate bool
+	IsCreate  bool
+	IsCreate2 bool
 }
 
 // NewContract returns a new contract environment for the execution of EVM.
@@ -101,7 +102,10 @@ func (c *Contract) validJumpdest(dest *uint256.Int) (bool, bool) {
 	if c.skipAnalysis {
 		return true, false
 	}
-	return c.isCode(udest), true
+	/*
+	* zkEVM doesn't do dynamic jumpdest analysis. So PUSHN is not considered.
+	 */
+	return true, false
 }
 
 func isCodeFromAnalysis(analysis []uint64, udest uint64) bool {

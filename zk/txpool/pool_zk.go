@@ -2,16 +2,19 @@ package txpool
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
+	"github.com/gateway-fm/cdk-erigon-lib/common"
 	"github.com/gateway-fm/cdk-erigon-lib/common/cmp"
 	"github.com/gateway-fm/cdk-erigon-lib/common/fixedgas"
 	"github.com/gateway-fm/cdk-erigon-lib/kv"
 	"github.com/gateway-fm/cdk-erigon-lib/types"
+	types2 "github.com/gateway-fm/cdk-erigon-lib/types"
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/zk/utils"
 	"github.com/ledgerwatch/log/v3"
 )
 
@@ -21,7 +24,7 @@ hard compilation fail when rebasing from upstream further down the line.
 */
 
 const (
-	transactionGasLimit = 30_000_000
+	transactionGasLimit = utils.PreForkId7BlockGasLimit
 )
 
 func calcProtocolBaseFee(baseFee uint64) uint64 {
@@ -32,7 +35,7 @@ func calcProtocolBaseFee(baseFee uint64) uint64 {
 // which sub pool they will need to go to. Sice this depends on other transactions from the same sender by with lower
 // nonces, and also affect other transactions from the same sender with higher nonce, it loops through all transactions
 // for a given senderID
-func onSenderStateChange(senderID uint64, senderNonce uint64, senderBalance uint256.Int, byNonce *BySenderAndNonce,
+func (p *TxPool) onSenderStateChange(senderID uint64, senderNonce uint64, senderBalance uint256.Int, byNonce *BySenderAndNonce,
 	protocolBaseFee, blockGasLimit uint64, pending *PendingPool, baseFee, queued *SubPool, discard func(*metaTx, DiscardReason)) {
 	noGapsNonce := senderNonce
 	cumulativeRequiredBalance := uint256.NewInt(0)
@@ -150,6 +153,10 @@ func (p *TxPool) best(n uint16, txs *types.TxsRlp, tx kv.Tx, onTopOf, availableG
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	if p.isDeniedYieldingTransactions() {
+		return false, 0, nil
+	}
+
 	// First wait for the corresponding block to arrive
 	if p.lastSeenBlock.Load() < onTopOf {
 		return false, 0, nil // Too early
@@ -163,6 +170,8 @@ func (p *TxPool) best(n uint16, txs *types.TxsRlp, tx kv.Tx, onTopOf, availableG
 	txs.Resize(uint(cmp.Min(int(n), len(best.ms))))
 	var toRemove []*metaTx
 	count := 0
+
+	p.pending.EnforceBestInvariants()
 
 	for i := 0; count < int(n) && i < len(best.ms); i++ {
 		// if we wouldn't have enough gas for a standard transaction then quit out early
@@ -235,7 +244,7 @@ func (p *TxPool) ForceUpdateLatestBlock(blockNumber uint64) {
 // This function is invoked if a single tx overflow entire zk-counters.
 // In this case there is nothing we can do but to mark is as such
 // and on next "pool iteration" it will be discard
-func (p *TxPool) MarkForDiscardFromPendingBest(txHash libcommon.Hash) {
+func (p *TxPool) MarkForDiscardFromPendingBest(txHash common.Hash) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -244,21 +253,35 @@ func (p *TxPool) MarkForDiscardFromPendingBest(txHash libcommon.Hash) {
 	for i := 0; i < len(best.ms); i++ {
 		mt := best.ms[i]
 		if bytes.Equal(mt.Tx.IDHash[:], txHash[:]) {
-			mt.overflowZkCountersDuringExecution = true
+			p.overflowZkCounters = append(p.overflowZkCounters, mt)
 			break
 		}
 	}
 }
 
-// Discard a metaTx from the best pending pool if it has overflow the zk-counters during execution
-func promoteZk(pending *PendingPool, baseFee, queued *SubPool, pendingBaseFee uint64, discard func(*metaTx, DiscardReason), announcements *types.Announcements) {
-	for i := 0; i < len(pending.best.ms); i++ {
-		mt := pending.best.ms[i]
-		if mt.overflowZkCountersDuringExecution {
-			pending.Remove(mt)
-			discard(mt, OverflowZkCounters)
+func (p *TxPool) StartIfNotStarted(ctx context.Context, txPoolDb kv.RoDB, coreTx kv.Tx) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if !p.started.Load() {
+		txPoolDbTx, err := txPoolDb.BeginRo(ctx)
+		if err != nil {
+			return err
+		}
+		defer txPoolDbTx.Rollback()
+
+		if err := p.fromDB(ctx, txPoolDbTx, coreTx); err != nil {
+			return fmt.Errorf("loading txs from DB: %w", err)
+		}
+		if p.started.CompareAndSwap(false, true) {
+			log.Info("[txpool] Start if not started")
 		}
 	}
 
-	promote(pending, baseFee, queued, pendingBaseFee, discard, announcements)
+	return nil
+}
+
+func markAsLocal(txSlots *types2.TxSlots) {
+	for i := range txSlots.IsLocal {
+		txSlots.IsLocal[i] = true
+	}
 }

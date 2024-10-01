@@ -2,9 +2,11 @@ package utils
 
 import (
 	"fmt"
-
+	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
 	"github.com/gateway-fm/cdk-erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/chain"
+	"github.com/ledgerwatch/erigon/core/state"
+	"github.com/ledgerwatch/erigon/core/systemcontracts"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/zk/constants"
 	"github.com/ledgerwatch/erigon/zk/hermez_db"
@@ -78,6 +80,10 @@ type ForkConfigWriter interface {
 	SetForkIdBlock(forkId constants.ForkId, blockNum uint64) error
 }
 
+type DbReader interface {
+	GetHighestBlockInBatch(batchNo uint64) (uint64, error)
+}
+
 func UpdateZkEVMBlockCfg(cfg ForkConfigWriter, hermezDb ForkReader, logPrefix string) error {
 	var lastSetBlockNum uint64 = 0
 	var foundAny bool = false
@@ -122,4 +128,32 @@ func RecoverySetBlockConfigForks(blockNum uint64, forkId uint64, cfg ForkConfigW
 	}
 
 	return nil
+}
+
+func GetBatchLocalExitRootFromSCStorageForLatestBlock(batchNo uint64, db DbReader, tx kv.Tx) (libcommon.Hash, error) {
+	if batchNo > 0 {
+		blockNo, err := db.GetHighestBlockInBatch(batchNo)
+		if err != nil {
+			return libcommon.Hash{}, err
+		}
+
+		return GetBatchLocalExitRootFromSCStorageByBlock(blockNo, db, tx)
+	}
+
+	return libcommon.Hash{}, nil
+
+}
+
+func GetBatchLocalExitRootFromSCStorageByBlock(blockNumber uint64, db DbReader, tx kv.Tx) (libcommon.Hash, error) {
+	if blockNumber > 0 {
+		stateReader := state.NewPlainState(tx, blockNumber+1, systemcontracts.SystemContractCodeLookup["hermez"])
+		defer stateReader.Close()
+		rawLer, err := stateReader.ReadAccountStorage(state.GER_MANAGER_ADDRESS, 1, &state.GLOBAL_EXIT_ROOT_POS_1)
+		if err != nil {
+			return libcommon.Hash{}, err
+		}
+		return libcommon.BytesToHash(rawLer), nil
+	}
+
+	return libcommon.Hash{}, nil
 }

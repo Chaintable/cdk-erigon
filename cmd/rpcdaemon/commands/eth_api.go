@@ -52,7 +52,7 @@ type EthAPI interface {
 	GetBlockTransactionCountByHash(ctx context.Context, blockHash common.Hash) (*hexutil.Uint, error)
 
 	// Transaction related (see ./eth_txs.go)
-	GetTransactionByHash(ctx context.Context, hash common.Hash) (*RPCTransaction, error)
+	GetTransactionByHash(ctx context.Context, hash common.Hash) (interface{}, error)
 	GetTransactionByBlockHashAndIndex(ctx context.Context, blockHash common.Hash, txIndex hexutil.Uint64) (*RPCTransaction, error)
 	GetTransactionByBlockNumberAndIndex(ctx context.Context, blockNr rpc.BlockNumber, txIndex hexutil.Uint) (*RPCTransaction, error)
 	GetRawTransactionByBlockNumberAndIndex(ctx context.Context, blockNr rpc.BlockNumber, index hexutil.Uint) (hexutility.Bytes, error)
@@ -331,22 +331,23 @@ func (api *BaseAPI) pruneMode(tx kv.Tx) (*prune.Mode, error) {
 // APIImpl is implementation of the EthAPI interface based on remote Db access
 type APIImpl struct {
 	*BaseAPI
-	ethBackend                 rpchelper.ApiBackend
-	txPool                     txpool.TxpoolClient
-	mining                     txpool.MiningClient
-	gasCache                   *GasPriceCache
-	db                         kv.RoDB
-	GasCap                     uint64
-	ReturnDataLimit            int
-	ZkRpcUrl                   string
-	PoolManagerUrl             string
-	AllowFreeTransactions      bool
-	AllowPreEIP155Transactions bool
-	L1RpcUrl                   string
-	DefaultGasPrice            uint64
-	MaxGasPrice                uint64
-	GasPriceFactor             float64
-	L1GasPrice                 L1GasPrice
+	ethBackend                  rpchelper.ApiBackend
+	txPool                      txpool.TxpoolClient
+	mining                      txpool.MiningClient
+	gasCache                    *GasPriceCache
+	db                          kv.RoDB
+	GasCap                      uint64
+	ReturnDataLimit             int
+	ZkRpcUrl                    string
+	PoolManagerUrl              string
+	AllowFreeTransactions       bool
+	AllowPreEIP155Transactions  bool
+	L1RpcUrl                    string
+	DefaultGasPrice             uint64
+	MaxGasPrice                 uint64
+	GasPriceFactor              float64
+	L1GasPrice                  L1GasPrice
+	VirtualCountersSmtReduction float64
 }
 
 // NewEthAPI returns APIImpl instance
@@ -356,23 +357,24 @@ func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpoo
 	}
 
 	return &APIImpl{
-		BaseAPI:                    base,
-		db:                         db,
-		ethBackend:                 eth,
-		txPool:                     txPool,
-		mining:                     mining,
-		gasCache:                   NewGasPriceCache(),
-		GasCap:                     gascap,
-		ReturnDataLimit:            returnDataLimit,
-		ZkRpcUrl:                   ethCfg.L2RpcUrl,
-		PoolManagerUrl:             ethCfg.PoolManagerUrl,
-		AllowFreeTransactions:      ethCfg.AllowFreeTransactions,
-		AllowPreEIP155Transactions: ethCfg.AllowPreEIP155Transactions,
-		L1RpcUrl:                   ethCfg.L1RpcUrl,
-		DefaultGasPrice:            ethCfg.DefaultGasPrice,
-		MaxGasPrice:                ethCfg.MaxGasPrice,
-		GasPriceFactor:             ethCfg.GasPriceFactor,
-		L1GasPrice:                 L1GasPrice{},
+		BaseAPI:                     base,
+		db:                          db,
+		ethBackend:                  eth,
+		txPool:                      txPool,
+		mining:                      mining,
+		gasCache:                    NewGasPriceCache(),
+		GasCap:                      gascap,
+		ReturnDataLimit:             returnDataLimit,
+		ZkRpcUrl:                    ethCfg.L2RpcUrl,
+		PoolManagerUrl:              ethCfg.PoolManagerUrl,
+		AllowFreeTransactions:       ethCfg.AllowFreeTransactions,
+		AllowPreEIP155Transactions:  ethCfg.AllowPreEIP155Transactions,
+		L1RpcUrl:                    ethCfg.L1RpcUrl,
+		DefaultGasPrice:             ethCfg.DefaultGasPrice,
+		MaxGasPrice:                 ethCfg.MaxGasPrice,
+		GasPriceFactor:              ethCfg.GasPriceFactor,
+		L1GasPrice:                  L1GasPrice{},
+		VirtualCountersSmtReduction: ethCfg.VirtualCountersSmtReduction,
 	}
 }
 
@@ -525,12 +527,10 @@ func NewGasPriceCache() *GasPriceCache {
 }
 
 func (c *GasPriceCache) GetLatest() (common.Hash, *big.Int) {
-	var hash common.Hash
-	var price *big.Int
 	c.mtx.Lock()
-	hash = c.latestHash
-	price = c.latestPrice
-	c.mtx.Unlock()
+	defer c.mtx.Unlock()
+	hash := c.latestHash
+	price := new(big.Int).Set(c.latestPrice) // deep copy
 	return hash, price
 }
 
