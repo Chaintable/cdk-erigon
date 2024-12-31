@@ -12,11 +12,20 @@ const (
 	ResultEntryMinSize = uint32(9)
 
 	// Command errors
-	CmdErrOK             = 0
-	CmdErrAlreadyStarted = 1
-	CmdErrAlreadyStopped = 2
-	CmdErrBadFromEntry   = 3
-	CmdErrInvalidCommand = 9
+	CmdErrOK              = 0 // CmdErrOK for no error
+	CmdErrAlreadyStarted  = 1 // CmdErrAlreadyStarted for client already started error
+	CmdErrAlreadyStopped  = 2 // CmdErrAlreadyStopped for client already stopped error
+	CmdErrBadFromEntry    = 3 // CmdErrBadFromEntry for invalid starting entry number
+	CmdErrBadFromBookmark = 4 // CmdErrBadFromBookmark for invalid starting bookmark
+	CmdErrInvalidCommand  = 9 // CmdErrInvalidCommand for invalid/unknown command error
+)
+
+var (
+	ErrAlreadyStarted  = errors.New("client already started")
+	ErrAlreadyStopped  = errors.New("client already stopped")
+	ErrBadFromEntry    = errors.New("invalid starting entry number")
+	ErrBadFromBookmark = errors.New("invalid starting bookmark")
+	ErrInvalidCommand  = errors.New("invalid/unknown command")
 )
 
 type ResultEntry struct {
@@ -41,9 +50,18 @@ func (r *ResultEntry) GetError() error {
 	return errors.New(string(r.ErrorStr))
 }
 
+// Encode encodes result entry to the binary format
+func (r *ResultEntry) Encode() []byte {
+	be := make([]byte, 1)
+	be[0] = r.PacketType
+	be = binary.BigEndian.AppendUint32(be, r.Length)
+	be = binary.BigEndian.AppendUint32(be, r.ErrorNum)
+	be = append(be, r.ErrorStr...) //nolint:makezero
+	return be
+}
+
 // Decode/convert from binary bytes slice to an entry type
 func DecodeResultEntry(b []byte) (*ResultEntry, error) {
-
 	if uint32(len(b)) < ResultEntryMinSize {
 		return &ResultEntry{}, fmt.Errorf("invalid result entry binary size. Expected: >=%d, got: %d", ResultEntryMinSize, len(b))
 	}

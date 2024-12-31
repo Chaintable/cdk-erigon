@@ -3,10 +3,10 @@ package state
 import (
 	"errors"
 
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
 	"github.com/holiman/uint256"
 	"github.com/iden3/go-iden3-crypto/keccak256"
-	"github.com/ledgerwatch/erigon/chain"
+	"github.com/ledgerwatch/erigon-lib/chain"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/core/types"
 	dstypes "github.com/ledgerwatch/erigon/zk/datastream/types"
@@ -34,13 +34,19 @@ type ReadOnlyHermezDb interface {
 	GetIntermediateTxStateRoot(blockNum uint64, txhash libcommon.Hash) (libcommon.Hash, error)
 	GetReusedL1InfoTreeIndex(blockNum uint64) (bool, error)
 	GetSequenceByBatchNo(batchNo uint64) (*zktypes.L1BatchInfo, error)
-	GetHighestBlockInBatch(batchNo uint64) (uint64, error)
+	GetHighestBlockInBatch(batchNo uint64) (uint64, bool, error)
+	GetSequenceByBatchNoOrHighest(batchNo uint64) (*zktypes.L1BatchInfo, error)
 	GetLowestBlockInBatch(batchNo uint64) (uint64, bool, error)
 	GetL2BlockNosByBatch(batchNo uint64) ([]uint64, error)
 	GetBatchGlobalExitRoot(batchNum uint64) (*dstypes.GerUpdate, error)
 	GetVerificationByBatchNo(batchNo uint64) (*zktypes.L1BatchInfo, error)
+	GetVerificationByBatchNoOrHighest(batchNo uint64) (*zktypes.L1BatchInfo, error)
 	GetL1BatchData(batchNumber uint64) ([]byte, error)
 	GetL1InfoTreeUpdateByGer(ger libcommon.Hash) (*zktypes.L1InfoTreeUpdate, error)
+	GetBlockL1InfoTreeIndex(blockNumber uint64) (uint64, error)
+	GetBlockInfoRoot(blockNumber uint64) (libcommon.Hash, error)
+	GetLastBlockGlobalExitRoot(l2BlockNo uint64) (libcommon.Hash, uint64, error)
+	GetForkId(batchNo uint64) (uint64, error)
 }
 
 func (sdb *IntraBlockState) GetTxCount() (uint64, error) {
@@ -52,6 +58,10 @@ func (sdb *IntraBlockState) GetTxCount() (uint64, error) {
 }
 
 func (sdb *IntraBlockState) PostExecuteStateSet(chainConfig *chain.Config, blockNum uint64, blockInfoRoot *libcommon.Hash) {
+	if chainConfig.IsNormalcy(blockNum) {
+		return
+	}
+
 	//ETROG
 	if chainConfig.IsForkID7Etrog(blockNum) {
 		sdb.scalableSetBlockInfoRoot(blockInfoRoot)
@@ -64,18 +74,20 @@ func (sdb *IntraBlockState) PreExecuteStateSet(chainConfig *chain.Config, blockN
 		sdb.CreateAccount(ADDRESS_SCALABLE_L2, true)
 	}
 
-	//save block number
-	sdb.scalableSetBlockNum(blockNumber)
+	if !chainConfig.IsNormalcy(blockNumber) {
+		//save block number
+		sdb.scalableSetBlockNum(blockNumber)
 
-	//ETROG
-	if chainConfig.IsForkID7Etrog(blockNumber) {
-		currentTimestamp := sdb.ScalableGetTimestamp()
-		if blockTimestamp > currentTimestamp {
-			sdb.ScalableSetTimestamp(blockTimestamp)
+		//ETROG
+		if chainConfig.IsForkID7Etrog(blockNumber) {
+			currentTimestamp := sdb.ScalableGetTimestamp()
+			if blockTimestamp > currentTimestamp {
+				sdb.ScalableSetTimestamp(blockTimestamp)
+			}
+
+			//save prev block hash
+			sdb.scalableSetBlockHash(blockNumber-1, stateRoot)
 		}
-
-		//save prev block hash
-		sdb.scalableSetBlockHash(blockNumber-1, stateRoot)
 	}
 }
 
@@ -93,18 +105,22 @@ func (sdb *IntraBlockState) SyncerPreExecuteStateSet(
 	}
 
 	//save block number
-	sdb.scalableSetBlockNum(blockNumber)
+	if !chainConfig.IsNormalcy(blockNumber) {
+		sdb.scalableSetBlockNum(blockNumber)
+	}
 	emptyHash := libcommon.Hash{}
 
 	//ETROG
 	if chainConfig.IsForkID7Etrog(blockNumber) {
-		currentTimestamp := sdb.ScalableGetTimestamp()
-		if blockTimestamp > currentTimestamp {
-			sdb.ScalableSetTimestamp(blockTimestamp)
-		}
+		if !chainConfig.IsNormalcy(blockNumber) {
+			currentTimestamp := sdb.ScalableGetTimestamp()
+			if blockTimestamp > currentTimestamp {
+				sdb.ScalableSetTimestamp(blockTimestamp)
+			}
 
-		//save prev block hash
-		sdb.scalableSetBlockHash(blockNumber-1, prevBlockHash)
+			//save prev block hash
+			sdb.scalableSetBlockHash(blockNumber-1, prevBlockHash)
+		}
 
 		//save ger with l1blockhash - but only in the case that the l1 info tree index hasn't been
 		// re-used.  If it has been re-used we never write this to the contract storage

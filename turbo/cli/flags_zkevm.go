@@ -8,13 +8,20 @@ import (
 
 	"time"
 
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
+	"strconv"
+
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/cmd/utils"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/zk/sequencer"
 	utils2 "github.com/ledgerwatch/erigon/zk/utils"
 	"github.com/urfave/cli/v2"
 )
+
+var DeprecatedFlags = map[string]string{
+	"zkevm.gasless":       "zkevm.allow-free-transactions",
+	"zkevm.rpc-ratelimit": "",
+}
 
 func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 	checkFlag := func(flagName string, value interface{}) {
@@ -64,6 +71,8 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		panic(fmt.Sprintf("could not parse l2 datastreamer timeout value %s", l2DataStreamTimeoutVal))
 	}
 
+	l2ShortCircuitToVerifiedBatchVal := ctx.Bool(utils.L2ShortCircuitToVerifiedBatchFlag.Name)
+
 	sequencerBlockSealTimeVal := ctx.String(utils.SequencerBlockSealTime.Name)
 	sequencerBlockSealTime, err := time.ParseDuration(sequencerBlockSealTimeVal)
 	if err != nil {
@@ -107,11 +116,37 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 
 	witnessMemSize := utils.DatasizeFlagValue(ctx, utils.WitnessMemdbSize.Name)
 
+	badBatchStrings := strings.Split(ctx.String(utils.BadBatches.Name), ",")
+	badBatches := make([]uint64, 0)
+	for _, s := range badBatchStrings {
+		if s == "" {
+			// if there are no entries then we can just ignore it and move on
+			continue
+		}
+		// parse the string as uint64
+		val, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			panic(fmt.Sprintf("could not parse bad batch number %s", s))
+		}
+		badBatches = append(badBatches, val)
+	}
+
+	var witnessInclusion []libcommon.Address
+	for _, s := range strings.Split(ctx.String(utils.WitnessContractInclusion.Name), ",") {
+		if s == "" {
+			// if there are no entries then we can just ignore it and move on
+			continue
+		}
+		witnessInclusion = append(witnessInclusion, libcommon.HexToAddress(s))
+	}
+
 	cfg.Zk = &ethconfig.Zk{
 		L2ChainId:                              ctx.Uint64(utils.L2ChainIdFlag.Name),
 		L2RpcUrl:                               ctx.String(utils.L2RpcUrlFlag.Name),
 		L2DataStreamerUrl:                      ctx.String(utils.L2DataStreamerUrlFlag.Name),
+		L2DataStreamerUseTLS:                   ctx.Bool(utils.L2DataStreamerUseTLSFlag.Name),
 		L2DataStreamerTimeout:                  l2DataStreamTimeout,
+		L2ShortCircuitToVerifiedBatch:          l2ShortCircuitToVerifiedBatchVal,
 		L1SyncStartBlock:                       ctx.Uint64(utils.L1SyncStartBlock.Name),
 		L1SyncStopBatch:                        ctx.Uint64(utils.L1SyncStopBatch.Name),
 		L1ChainId:                              ctx.Uint64(utils.L1ChainIdFlag.Name),
@@ -129,8 +164,9 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		L1HighestBlockType:                     ctx.String(utils.L1HighestBlockTypeFlag.Name),
 		L1MaticContractAddress:                 libcommon.HexToAddress(ctx.String(utils.L1MaticContractAddressFlag.Name)),
 		L1FirstBlock:                           ctx.Uint64(utils.L1FirstBlockFlag.Name),
+		L1FinalizedBlockRequirement:            ctx.Uint64(utils.L1FinalizedBlockRequirementFlag.Name),
 		L1ContractAddressCheck:                 ctx.Bool(utils.L1ContractAddressCheckFlag.Name),
-		RpcRateLimits:                          ctx.Int(utils.RpcRateLimitsFlag.Name),
+		L1ContractAddressRetrieve:              ctx.Bool(utils.L1ContractAddressRetrieveFlag.Name),
 		RpcGetBatchWitnessConcurrencyLimit:     ctx.Int(utils.RpcGetBatchWitnessConcurrencyLimitFlag.Name),
 		DatastreamVersion:                      ctx.Int(utils.DatastreamVersionFlag.Name),
 		RebuildTreeAfter:                       ctx.Uint64(utils.RebuildTreeAfterFlag.Name),
@@ -139,8 +175,12 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		SequencerBlockSealTime:                 sequencerBlockSealTime,
 		SequencerBatchSealTime:                 sequencerBatchSealTime,
 		SequencerBatchVerificationTimeout:      sequencerBatchVerificationTimeout,
+		SequencerBatchVerificationRetries:      ctx.Int(utils.SequencerBatchVerificationRetries.Name),
 		SequencerTimeoutOnEmptyTxPool:          sequencerTimeoutOnEmptyTxPool,
 		SequencerHaltOnBatchNumber:             ctx.Uint64(utils.SequencerHaltOnBatchNumber.Name),
+		SequencerResequence:                    ctx.Bool(utils.SequencerResequence.Name),
+		SequencerResequenceStrict:              ctx.Bool(utils.SequencerResequenceStrict.Name),
+		SequencerResequenceReuseL1InfoIndex:    ctx.Bool(utils.SequencerResequenceReuseL1InfoIndex.Name),
 		ExecutorUrls:                           strings.Split(strings.ReplaceAll(ctx.String(utils.ExecutorUrls.Name), " ", ""), ","),
 		ExecutorStrictMode:                     ctx.Bool(utils.ExecutorStrictMode.Name),
 		ExecutorRequestTimeout:                 ctx.Duration(utils.ExecutorRequestTimeout.Name),
@@ -159,7 +199,6 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		GasPriceFactor:                         ctx.Float64(utils.GasPriceFactor.Name),
 		WitnessFull:                            ctx.Bool(utils.WitnessFullFlag.Name),
 		SyncLimit:                              ctx.Uint64(utils.SyncLimit.Name),
-		Gasless:                                ctx.Bool(utils.SupportGasless.Name),
 		DebugTimers:                            ctx.Bool(utils.DebugTimers.Name),
 		DebugNoSync:                            ctx.Bool(utils.DebugNoSync.Name),
 		DebugLimit:                             ctx.Uint64(utils.DebugLimit.Name),
@@ -175,13 +214,20 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		DataStreamWriteTimeout:                 ctx.Duration(utils.DataStreamWriteTimeout.Name),
 		DataStreamInactivityTimeout:            ctx.Duration(utils.DataStreamInactivityTimeout.Name),
 		VirtualCountersSmtReduction:            ctx.Float64(utils.VirtualCountersSmtReduction.Name),
+		BadBatches:                             badBatches,
+		InitialBatchCfgFile:                    ctx.String(utils.InitialBatchCfgFile.Name),
+		ACLPrintHistory:                        ctx.Int(utils.ACLPrintHistory.Name),
+		InfoTreeUpdateInterval:                 ctx.Duration(utils.InfoTreeUpdateInterval.Name),
+		SealBatchImmediatelyOnOverflow:         ctx.Bool(utils.SealBatchImmediatelyOnOverflow.Name),
+		MockWitnessGeneration:                  ctx.Bool(utils.MockWitnessGeneration.Name),
+		WitnessContractInclusion:               witnessInclusion,
 	}
 
 	utils2.EnableTimer(cfg.DebugTimers)
 
 	checkFlag(utils.L2ChainIdFlag.Name, cfg.L2ChainId)
 	if !sequencer.IsSequencer() {
-		checkFlag(utils.L2RpcUrlFlag.Name, cfg.L2RpcUrl)
+		checkFlag(utils.L2RpcUrlFlag.Name, cfg.Zk.L2RpcUrl)
 		checkFlag(utils.L2DataStreamerUrlFlag.Name, cfg.L2DataStreamerUrl)
 	} else {
 		checkFlag(utils.ExecutorUrls.Name, cfg.ExecutorUrls)
@@ -208,21 +254,17 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		}
 	}
 
-	checkFlag(utils.AddressSequencerFlag.Name, cfg.AddressSequencer)
-	checkFlag(utils.AddressAdminFlag.Name, cfg.AddressAdmin)
-	checkFlag(utils.AddressRollupFlag.Name, cfg.AddressRollup)
 	checkFlag(utils.AddressZkevmFlag.Name, cfg.AddressZkevm)
-	checkFlag(utils.AddressGerManagerFlag.Name, cfg.AddressGerManager)
 
 	checkFlag(utils.L1ChainIdFlag.Name, cfg.L1ChainId)
 	checkFlag(utils.L1RpcUrlFlag.Name, cfg.L1RpcUrl)
 	checkFlag(utils.L1MaticContractAddressFlag.Name, cfg.L1MaticContractAddress.Hex())
 	checkFlag(utils.L1FirstBlockFlag.Name, cfg.L1FirstBlock)
-	checkFlag(utils.RpcRateLimitsFlag.Name, cfg.RpcRateLimits)
 	checkFlag(utils.RpcGetBatchWitnessConcurrencyLimitFlag.Name, cfg.RpcGetBatchWitnessConcurrencyLimit)
 	checkFlag(utils.RebuildTreeAfterFlag.Name, cfg.RebuildTreeAfter)
 	checkFlag(utils.L1BlockRangeFlag.Name, cfg.L1BlockRange)
 	checkFlag(utils.L1QueryDelayFlag.Name, cfg.L1QueryDelay)
 	checkFlag(utils.TxPoolRejectSmartContractDeployments.Name, cfg.TxPoolRejectSmartContractDeployments)
 	checkFlag(utils.L1ContractAddressCheckFlag.Name, cfg.L1ContractAddressCheck)
+	checkFlag(utils.L1ContractAddressRetrieveFlag.Name, cfg.L1ContractAddressCheck)
 }

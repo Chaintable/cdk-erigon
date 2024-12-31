@@ -22,14 +22,17 @@ import (
 	"fmt"
 	"math/big"
 
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
+	"github.com/consensys/gnark-crypto/ecc"
+	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
+	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/holiman/uint256"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
+	"github.com/ledgerwatch/erigon-lib/crypto/blake2b"
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/crypto"
-	"github.com/ledgerwatch/erigon/crypto/blake2b"
-	"github.com/ledgerwatch/erigon/crypto/bls12381"
+	"github.com/ledgerwatch/erigon/crypto/secp256r1"
 	"github.com/ledgerwatch/erigon/params"
 	"golang.org/x/crypto/ripemd160"
 	//lint:ignore SA1019 Needed for precompile
@@ -79,6 +82,20 @@ var PrecompiledContractsForkID8Elderberry = map[libcommon.Address]PrecompiledCon
 	libcommon.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul_zkevm{enabled: true},
 	libcommon.BytesToAddress([]byte{8}): &bn256PairingIstanbul_zkevm{enabled: true},
 	libcommon.BytesToAddress([]byte{9}): &blake2F_zkevm{enabled: false},
+}
+
+// PrecompiledContractsForkID8 contains the default set of pre-compiled ForkID8.
+var PrecompiledContractsForkID13Durian = map[libcommon.Address]PrecompiledContract_zkEvm{
+	libcommon.BytesToAddress([]byte{1}):          &ecrecover_zkevm{enabled: true},
+	libcommon.BytesToAddress([]byte{2}):          &sha256hash_zkevm{enabled: true},
+	libcommon.BytesToAddress([]byte{3}):          &ripemd160hash_zkevm{enabled: false},
+	libcommon.BytesToAddress([]byte{4}):          &dataCopy_zkevm{enabled: true},
+	libcommon.BytesToAddress([]byte{5}):          &bigModExp_zkevm{enabled: true, eip2565: true},
+	libcommon.BytesToAddress([]byte{6}):          &bn256AddIstanbul_zkevm{enabled: true},
+	libcommon.BytesToAddress([]byte{7}):          &bn256ScalarMulIstanbul_zkevm{enabled: true},
+	libcommon.BytesToAddress([]byte{8}):          &bn256PairingIstanbul_zkevm{enabled: true},
+	libcommon.BytesToAddress([]byte{9}):          &blake2F_zkevm{enabled: false},
+	libcommon.BytesToAddress([]byte{0x01, 0x00}): &p256Verify_zkevm{enabled: true},
 }
 
 // ECRECOVER implemented as a native contract.
@@ -216,8 +233,9 @@ func (c *ripemd160hash_zkevm) Run(input []byte) ([]byte, error) {
 
 // data copy implemented as a native contract.
 type dataCopy_zkevm struct {
-	enabled bool
-	cc      *CounterCollector
+	enabled   bool
+	cc        *CounterCollector
+	outLength int
 }
 
 func (c *dataCopy_zkevm) SetCounterCollector(cc *CounterCollector) {
@@ -225,6 +243,7 @@ func (c *dataCopy_zkevm) SetCounterCollector(cc *CounterCollector) {
 }
 
 func (c *dataCopy_zkevm) SetOutputLength(outLength int) {
+	c.outLength = outLength
 }
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
@@ -241,6 +260,11 @@ func (c *dataCopy_zkevm) Run(in []byte) ([]byte, error) {
 	if !c.enabled {
 		return []byte{}, ErrUnsupportedPrecompile
 	}
+
+	if c.cc != nil {
+		c.cc.preIdentity(len(in), c.outLength)
+	}
+
 	return in, nil
 }
 
@@ -275,6 +299,34 @@ func (c *bigModExp_zkevm) RequiredGas(input []byte) uint64 {
 	} else {
 		input = input[:0]
 	}
+
+	// Retrieve the operands and execute the exponentiation
+	var (
+		base       = new(big.Int).SetBytes(getData(input, 0, baseLen.Uint64()))
+		exp        = new(big.Int).SetBytes(getData(input, baseLen.Uint64(), expLen.Uint64()))
+		mod        = new(big.Int).SetBytes(getData(input, baseLen.Uint64()+expLen.Uint64(), modLen.Uint64()))
+		baseBitLen = base.BitLen()
+		expBitLen  = exp.BitLen()
+		modBitLen  = mod.BitLen()
+	)
+
+	// zk special cases
+	// - if mod = 0 we consume gas as normal
+	// - if base is 0 and mod < 8192 we consume gas as normal
+	// - if neither of the above are true we check for reverts and return 0 gas fee
+
+	if modBitLen == 0 {
+		// consume as normal - will return 0
+	} else if baseBitLen == 0 {
+		if modBitLen > 8192 {
+			return 0
+		} else {
+			// consume as normal - will return 0
+		}
+	} else if baseBitLen > 8192 || expBitLen > 8192 || modBitLen > 8192 {
+		return 0
+	}
+
 	// Retrieve the head 32 bytes of exp for the adjusted exponent length
 	var expHead *big.Int
 	if big.NewInt(int64(len(input))).Cmp(baseLen) <= 0 {
@@ -343,27 +395,50 @@ func (c *bigModExp_zkevm) Run(input []byte) ([]byte, error) {
 		baseLen = new(big.Int).SetBytes(getData(input, 0, 32)).Uint64()
 		expLen  = new(big.Int).SetBytes(getData(input, 32, 32)).Uint64()
 		modLen  = new(big.Int).SetBytes(getData(input, 64, 32)).Uint64()
+		base = big.NewInt(0)
+		exp = big.NewInt(0)
+		mod = big.NewInt(0)
 	)
-	if len(input) > 96 {
-		input = input[96:]
-	} else {
-		input = input[:0]
+
+	if len(input) >= 96 + int(baseLen) {
+		base = new(big.Int).SetBytes(getData(input, 96, uint64(baseLen)))
 	}
-	// Handle a special case when both the base and mod length is zero
-	if baseLen == 0 && modLen == 0 {
-		return []byte{}, nil
+	if len(input) >= 96 + int(baseLen) + int(expLen) {
+		exp = new(big.Int).SetBytes(getData(input, 96 + uint64(baseLen), uint64(expLen)))
 	}
+	if len(input) >= 96 + int(baseLen) + int(expLen) + int(modLen) {
+		mod = new(big.Int).SetBytes(getData(input, 96 + uint64(baseLen) + uint64(expLen), uint64(modLen)))
+	}
+	if len(input) < 96 + int(baseLen) + int(expLen) + int(modLen) {
+		input = common.LeftPadBytes(input, 96 + int(baseLen) + int(expLen) + int(modLen))
+	}
+
 	// Retrieve the operands and execute the exponentiation
 	var (
-		base = new(big.Int).SetBytes(getData(input, 0, baseLen))
-		exp  = new(big.Int).SetBytes(getData(input, baseLen, expLen))
-		mod  = new(big.Int).SetBytes(getData(input, baseLen+expLen, modLen))
-		v    []byte
+		v          []byte
+		baseBitLen = base.BitLen()
+		expBitLen  = exp.BitLen()
+		modBitLen  = mod.BitLen()
 	)
+
+	if modBitLen == 0 {
+		return []byte{}, nil
+	}
+
+	if baseBitLen == 0 {
+		if modBitLen > 8192 {
+			return nil, ErrExecutionReverted
+		} else {
+			return common.LeftPadBytes([]byte{}, int(modLen)), nil
+		}
+	}
+
+	// limit to 8192 bits for base, exp, and mod in ZK
+	if baseBitLen > 8192 || expBitLen > 8192 || modBitLen > 8192 {
+		return nil, ErrExecutionReverted
+	}
+
 	switch {
-	case mod.BitLen() == 0:
-		// Modulo 0 is undefined, return zero
-		return common.LeftPadBytes([]byte{}, int(modLen)), nil
 	case base.Cmp(libcommon.Big1) == 0:
 		//If base == 1, then we can just return base % mod (if mod >= 1, which it is)
 		v = base.Mod(base, mod).Bytes()
@@ -675,26 +750,22 @@ func (c *bls12381G1Add_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, errBLS12381InvalidInputLength
 	}
 	var err error
-	var p0, p1 *bls12381.PointG1
-
-	// Initialize G1
-	g := bls12381.NewG1()
+	var p0, p1 *bls12381.G1Affine
 
 	// Decode G1 point p_0
-	if p0, err = g.DecodePoint(input[:128]); err != nil {
+	if p0, err = decodePointG1(input[:128]); err != nil {
 		return nil, err
 	}
 	// Decode G1 point p_1
-	if p1, err = g.DecodePoint(input[128:]); err != nil {
+	if p1, err = decodePointG1(input[128:]); err != nil {
 		return nil, err
 	}
 
 	// Compute r = p_0 + p_1
-	r := g.New()
-	g.Add(r, p0, p1)
+	p0.Add(p0, p1)
 
 	// Encode the G1 point result into 128 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG1(p0), nil
 }
 
 // bls12381G1Mul implements EIP-2537 G1Mul precompile.
@@ -722,24 +793,21 @@ func (c *bls12381G1Mul_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, errBLS12381InvalidInputLength
 	}
 	var err error
-	var p0 *bls12381.PointG1
-
-	// Initialize G1
-	g := bls12381.NewG1()
+	var p0 *bls12381.G1Affine
 
 	// Decode G1 point
-	if p0, err = g.DecodePoint(input[:128]); err != nil {
+	if p0, err = decodePointG1(input[:128]); err != nil {
 		return nil, err
 	}
 	// Decode scalar value
 	e := new(big.Int).SetBytes(input[128:])
 
 	// Compute r = e * p_0
-	r := g.New()
-	g.MulScalar(r, p0, e)
+	r := new(bls12381.G1Affine)
+	r.ScalarMultiplication(p0, e)
 
 	// Encode the G1 point into 128 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG1(r), nil
 }
 
 // bls12381G1MultiExp implements EIP-2537 G1MultiExp precompile.
@@ -782,32 +850,31 @@ func (c *bls12381G1MultiExp_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, errBLS12381InvalidInputLength
 	}
 	var err error
-	points := make([]*bls12381.PointG1, k)
-	scalars := make([]*big.Int, k)
-
-	// Initialize G1
-	g := bls12381.NewG1()
+	points := make([]bls12381.G1Affine, k)
+	scalars := make([]fr.Element, k)
 
 	// Decode point scalar pairs
 	for i := 0; i < k; i++ {
 		off := 160 * i
 		t0, t1, t2 := off, off+128, off+160
 		// Decode G1 point
-		if points[i], err = g.DecodePoint(input[t0:t1]); err != nil {
+		p, err := decodePointG1(input[t0:t1])
+		if err != nil {
 			return nil, err
 		}
+		points[i] = *p
 		// Decode scalar value
-		scalars[i] = new(big.Int).SetBytes(input[t1:t2])
+		scalars[i] = *new(fr.Element).SetBytes(input[t1:t2])
 	}
 
 	// Compute r = e_0 * p_0 + e_1 * p_1 + ... + e_(k-1) * p_(k-1)
-	r := g.New()
-	if _, err = g.MultiExp(r, points, scalars); err != nil {
+	r := new(bls12381.G1Affine)
+	if _, err = r.MultiExp(points, scalars, ecc.MultiExpConfig{}); err != nil {
 		return nil, err
 	}
 
 	// Encode the G1 point to 128 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG1(r), nil
 }
 
 // bls12381G2Add implements EIP-2537 G2Add precompile.
@@ -835,26 +902,23 @@ func (c *bls12381G2Add_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, errBLS12381InvalidInputLength
 	}
 	var err error
-	var p0, p1 *bls12381.PointG2
-
-	// Initialize G2
-	g := bls12381.NewG2()
-	r := g.New()
+	var p0, p1 *bls12381.G2Affine
 
 	// Decode G2 point p_0
-	if p0, err = g.DecodePoint(input[:256]); err != nil {
+	if p0, err = decodePointG2(input[:256]); err != nil {
 		return nil, err
 	}
 	// Decode G2 point p_1
-	if p1, err = g.DecodePoint(input[256:]); err != nil {
+	if p1, err = decodePointG2(input[256:]); err != nil {
 		return nil, err
 	}
 
 	// Compute r = p_0 + p_1
-	g.Add(r, p0, p1)
+	r := new(bls12381.G2Affine)
+	r.Add(p0, p1)
 
 	// Encode the G2 point into 256 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG2(r), nil
 }
 
 // bls12381G2Mul implements EIP-2537 G2Mul precompile.
@@ -882,24 +946,21 @@ func (c *bls12381G2Mul_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, errBLS12381InvalidInputLength
 	}
 	var err error
-	var p0 *bls12381.PointG2
-
-	// Initialize G2
-	g := bls12381.NewG2()
+	var p0 *bls12381.G2Affine
 
 	// Decode G2 point
-	if p0, err = g.DecodePoint(input[:256]); err != nil {
+	if p0, err = decodePointG2(input[:256]); err != nil {
 		return nil, err
 	}
 	// Decode scalar value
 	e := new(big.Int).SetBytes(input[256:])
 
 	// Compute r = e * p_0
-	r := g.New()
-	g.MulScalar(r, p0, e)
+	r := new(bls12381.G2Affine)
+	r.ScalarMultiplication(p0, e)
 
 	// Encode the G2 point into 256 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG2(r), nil
 }
 
 // bls12381G2MultiExp implements EIP-2537 G2MultiExp precompile.
@@ -941,33 +1002,30 @@ func (c *bls12381G2MultiExp_zkevm) Run(input []byte) ([]byte, error) {
 	if len(input) == 0 || len(input)%288 != 0 {
 		return nil, errBLS12381InvalidInputLength
 	}
-	var err error
-	points := make([]*bls12381.PointG2, k)
-	scalars := make([]*big.Int, k)
 
-	// Initialize G2
-	g := bls12381.NewG2()
+	points := make([]bls12381.G2Affine, k)
+	scalars := make([]fr.Element, k)
 
 	// Decode point scalar pairs
 	for i := 0; i < k; i++ {
 		off := 288 * i
 		t0, t1, t2 := off, off+256, off+288
-		// Decode G1 point
-		if points[i], err = g.DecodePoint(input[t0:t1]); err != nil {
+		// Decode G2 point
+		p, err := decodePointG2(input[t0:t1])
+		if err != nil {
 			return nil, err
 		}
+		points[i] = *p
 		// Decode scalar value
-		scalars[i] = new(big.Int).SetBytes(input[t1:t2])
+		scalars[i] = *new(fr.Element).SetBytes(input[t1:t2])
 	}
 
 	// Compute r = e_0 * p_0 + e_1 * p_1 + ... + e_(k-1) * p_(k-1)
-	r := g.New()
-	if _, err := g.MultiExp(r, points, scalars); err != nil {
-		return nil, err
-	}
+	r := new(bls12381.G2Affine)
+	r.MultiExp(points, scalars, ecc.MultiExpConfig{})
 
 	// Encode the G2 point to 256 bytes.
-	return g.EncodePoint(r), nil
+	return encodePointG2(r), nil
 }
 
 // bls12381Pairing implements EIP-2537 Pairing precompile.
@@ -999,9 +1057,10 @@ func (c *bls12381Pairing_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, errBLS12381InvalidInputLength
 	}
 
-	// Initialize BLS12-381 pairing engine
-	e := bls12381.NewPairingEngine()
-	g1, g2 := e.G1, e.G2
+	var (
+		p []bls12381.G1Affine
+		q []bls12381.G2Affine
+	)
 
 	// Decode pairs
 	for i := 0; i < k; i++ {
@@ -1009,33 +1068,34 @@ func (c *bls12381Pairing_zkevm) Run(input []byte) ([]byte, error) {
 		t0, t1, t2 := off, off+128, off+384
 
 		// Decode G1 point
-		p1, err := g1.DecodePoint(input[t0:t1])
+		p1, err := decodePointG1(input[t0:t1])
 		if err != nil {
 			return nil, err
 		}
 		// Decode G2 point
-		p2, err := g2.DecodePoint(input[t1:t2])
+		p2, err := decodePointG2(input[t1:t2])
 		if err != nil {
 			return nil, err
 		}
 
 		// 'point is on curve' check already done,
 		// Here we need to apply subgroup checks.
-		if !g1.InCorrectSubgroup(p1) {
+		if !p1.IsInSubGroup() {
 			return nil, errBLS12381G1PointSubgroup
 		}
-		if !g2.InCorrectSubgroup(p2) {
+		if !p2.IsInSubGroup() {
 			return nil, errBLS12381G2PointSubgroup
 		}
 
-		// Update pairing engine with G1 and G2 ponits
-		e.AddPair(p1, p2)
+		p = append(p, *p1)
+		q = append(q, *p2)
 	}
 	// Prepare 32 byte output
 	out := make([]byte, 32)
 
 	// Compute pairing and set the result
-	if e.Check() {
+	ok, err := bls12381.PairingCheck(p, q)
+	if err == nil && ok {
 		out[31] = 1
 	}
 	return out, nil
@@ -1055,7 +1115,7 @@ func (c *bls12381MapG1_zkevm) SetOutputLength(outLength int) {
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381MapG1_zkevm) RequiredGas(input []byte) uint64 {
-	return params.Bls12381MapG1Gas
+	return params.Bls12381MapFpToG1Gas
 }
 
 func (c *bls12381MapG1_zkevm) Run(input []byte) ([]byte, error) {
@@ -1072,17 +1132,11 @@ func (c *bls12381MapG1_zkevm) Run(input []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Initialize G1
-	g := bls12381.NewG1()
-
 	// Compute mapping
-	r, err := g.MapToCurve(fe)
-	if err != nil {
-		return nil, err
-	}
+	r := bls12381.MapToG1(fe)
 
 	// Encode the G1 point to 128 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG1(&r), nil
 }
 
 // bls12381MapG2 implements EIP-2537 MapG2 precompile.
@@ -1099,7 +1153,7 @@ func (c *bls12381MapG2_zkevm) SetOutputLength(outLength int) {
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381MapG2_zkevm) RequiredGas(input []byte) uint64 {
-	return params.Bls12381MapG2Gas
+	return params.Bls12381MapFp2ToG2Gas
 }
 
 func (c *bls12381MapG2_zkevm) Run(input []byte) ([]byte, error) {
@@ -1111,27 +1165,73 @@ func (c *bls12381MapG2_zkevm) Run(input []byte) ([]byte, error) {
 	}
 
 	// Decode input field element
-	fe := make([]byte, 96)
 	c0, err := decodeBLS12381FieldElement(input[:64])
 	if err != nil {
 		return nil, err
 	}
-	copy(fe[48:], c0)
 	c1, err := decodeBLS12381FieldElement(input[64:])
 	if err != nil {
 		return nil, err
 	}
-	copy(fe[:48], c1)
-
-	// Initialize G2
-	g := bls12381.NewG2()
 
 	// Compute mapping
-	r, err := g.MapToCurve(fe)
-	if err != nil {
-		return nil, err
-	}
+	r := bls12381.MapToG2(bls12381.E2{A0: c0, A1: c1})
 
 	// Encode the G2 point to 256 bytes
-	return g.EncodePoint(r), nil
+	return encodePointG2(&r), nil
+}
+
+// P256VERIFY (secp256r1 signature verification)
+// implemented as a native contract
+type p256Verify_zkevm struct {
+	enabled bool
+	cc      *CounterCollector
+}
+
+func (c *p256Verify_zkevm) SetCounterCollector(cc *CounterCollector) {
+	c.cc = cc
+}
+
+// RequiredGas returns the gas required to execute the precompiled contract
+func (c *p256Verify_zkevm) RequiredGas(input []byte) uint64 {
+	if !c.enabled {
+		return 0
+	}
+
+	return params.P256VerifyGas
+}
+
+func (c *p256Verify_zkevm) SetOutputLength(outLength int) {
+}
+
+// Run executes the precompiled contract with given 160 bytes of param, returning the output and the used gas
+func (c *p256Verify_zkevm) Run(input []byte) ([]byte, error) {
+	if !c.enabled {
+		return nil, ErrUnsupportedPrecompile
+	}
+
+	// Required input length is 160 bytes
+	const p256VerifyInputLength = 160
+	// Check the input length
+	if len(input) != p256VerifyInputLength {
+		// Input length is invalid
+		return nil, nil
+	}
+
+	// Extract the hash, r, s, x, y from the input
+	hash := input[0:32]
+	r, s := new(big.Int).SetBytes(input[32:64]), new(big.Int).SetBytes(input[64:96])
+	x, y := new(big.Int).SetBytes(input[96:128]), new(big.Int).SetBytes(input[128:160])
+
+	if c.cc != nil {
+		c.cc.preP256Verify(r, s, x, y)
+	}
+	// Verify the secp256r1 signature
+	if secp256r1.Verify(hash, r, s, x, y) {
+		// Signature is valid
+		return common.LeftPadBytes(big1.Bytes(), 32), nil
+	} else {
+		// Signature is invalid
+		return nil, nil
+	}
 }

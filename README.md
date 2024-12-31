@@ -40,7 +40,6 @@ base and run `go run cmd/hack/allocs/main.go [your-file-name]` to convert it to 
 **Tip**: the contract addresses in the `dynamic-{network}.yaml` can be found in the files output when launching the network:
 - zkevm.address-sequencer => create_rollup_output.json => `sequencer`
 - zkevm.address-zkevm => create_rollup_output.json => `rollupAddress`
-- zkevm.address-admin => deploy_output.json => `admin`
 - zkevm.address-rollup => deploy_output.json => `polygonRollupManagerAddress`
 - zkevm.address-ger-manager => deploy_output.json => `polygonZkEVMGlobalExitRootAddress`
 
@@ -57,7 +56,7 @@ Please install:
 
 Using the Makefile command: `make build-libs` will install these for the relevant architecture.
 
-Due to dependency requirements Go 1.19 is required to build.
+Due to dependency requirements Go 1.21 is required to build.
 
 ## L1 Interaction
 In order to retrieve data from the L1, the L1 syncer must be configured to know how to request the highest block, this can be configured by flag:
@@ -77,6 +76,7 @@ instead of a regular L1 URL. e.g. `zkevm.l1-rpc-url=http://myerigonnode:6969?end
 ## Sequencer (WIP)
 
 Enable Sequencer: `CDK_ERIGON_SEQUENCER=1 ./build/bin/cdk-erigon <flags>`
+[Golang version >= 1.21](https://golang.org/doc/install); GCC 10+ or Clang; On Linux: kernel > v4
 
 ### Special mode - L1 recovery
 The sequencer supports a special recovery mode which allows it to continue the chain using data from the L1.  To enable
@@ -133,17 +133,12 @@ Initial SMT build performance can be increased if machine has enough RAM:
 
 ## Configuration Files
 Config files are the easiest way to configure cdk-erigon, there are examples in the repository for each network e.g. `hermezconfig-mainnet.yaml.example`.
-
-Depending on the RPC provider you are using, you may wish to alter `zkevm.rpc-ratelimit`.
-
 ***
 
 ## Running CDK-Erigon
 - Build using  `make cdk-erigon`
 - Set up your config file (copy one of the examples found in the repository root directory, and edit as required)
 - run `./build/bin/cdk-erigon --config="./hermezconfig-{network}.yaml"` (complete the name of your config file as required)
-
-NB: `--externalcl` flag is removed in upstream erigon so beware of re-using commands/config
 
 ### Run modes
 cdk-erigon can be run as an RPC node which will use the data stream to fetch new block/batch information and track a 
@@ -190,22 +185,20 @@ For a full explanation of the config options, see below:
 - `zkevm.l2-datastreamer-url`: URL for the L2 data streamer.
 - `zkevm.l1-chain-id`: Chain ID for the L1 network.
 - `zkevm.l1-rpc-url`: L1 Ethereum RPC URL.
+- `zkevm.l1-first-block`: The first block on L1 from which we begin syncing (where the rollup begins on the L1). NB: for AggLayer networks this must be the L1 block where the GER Manager contract was deployed.
 - `zkevm.address-sequencer`: The contract address for the sequencer
 - `zkevm.address-zkevm`: The address for the zkevm contract
-- `zkevm.address-admin`: The address for the admin contract
 - `zkevm.address-rollup`: The address for the rollup contract
 - `zkevm.address-ger-manager`: The address for the GER manager contract
-- `zkevm.rpc-ratelimit`: Rate limit for RPC calls.
 - `zkevm.data-stream-port`: Port for the data stream.  This needs to be set to enable the datastream server
 - `zkevm.data-stream-host`: The host for the data stream i.e. `localhost`.  This must be set to enable the datastream server
 - `zkevm.datastream-version:` Version of the data stream protocol.
-- `externalcl`: External consensus layer flag.
 - `http.api`: List of enabled HTTP API modules.
 
 Sequencer specific config:
 - `zkevm.executor-urls`: A csv list of the executor URLs.  These will be used in a round robbin fashion by the sequencer
 - `zkevm.executor-strict`: Defaulted to true, but can be set to false when running the sequencer without verifications (use with extreme caution)
-- `zkevm.witness-full`: Defaulted to true.  Controls whether the full or partial witness is used with the executor.
+- `zkevm.witness-full`: Defaulted to false.  Controls whether the full or partial witness is used with the executor.
 - `zkevm.reject-smart-contract-deployments`: Defaulted to false.  Controls whether smart contract deployments are rejected by the TxPool.
 
 Resource Utilisation config:
@@ -214,6 +207,15 @@ Resource Utilisation config:
 Useful config entries:
 - `zkevm.sync-limit`: This will ensure the network only syncs to a given block height.
 - `debug.timers`: This will enable debug timers in the logs to help with performance tuning. Recording timings of witness generation, etc. at INFO level.
+
+Metrics and pprof configuration flags:
+
+- `metrics:` Enables or disables the metrics collection. Set to true to enable.
+- `metrics.addr`: The address on which the metrics server will listen. Default is "0.0.0.0".
+- `metrics.port`: The port on which the metrics server will listen. Default is 6060.
+- `pprof`: Enables or disables the pprof profiling. Set to true to enable.
+- `pprof.addr`: The address on which the pprof server will listen. Default is "0.0.0.0".
+- `pprof.port`: The port on which the pprof server will listen. Default is 6061.
 
 ***
 
@@ -226,6 +228,13 @@ Useful config entries:
 | zkEVM Cardona | 2442     | 9      | [Link](https://hackmd.io/Ug9pB613SvevJgnXRC4YJA) | [Cardona RPC](https://rpc.cardona.zkevm-rpc.com/) | Sepolia          | `0x32d33D5137a7cFFb54c5Bf8371172bcEc5f310ff` |
 
 ***
+
+## Health Checks
+
+- Node version: `curl -X POST --data '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' {{node url}}` - returns cdk-erigon version
+- Node syncing status: `curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' {{node url}}` - returns stages process or false
+- Health check: GET request with header `X-ERIGON-HEALTHCHECK: synced` - returns 200 response if OK
+
 
 ## Additional Resources
 
