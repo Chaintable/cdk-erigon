@@ -1,14 +1,15 @@
 package db
 
 import (
+	"context"
+	"encoding/hex"
 	"math/big"
 
 	"fmt"
 	"strings"
 
-	"github.com/gateway-fm/cdk-erigon-lib/kv"
-	"github.com/ledgerwatch/erigon/ethdb"
-	"github.com/ledgerwatch/erigon/ethdb/olddb"
+	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/kv/membatch"
 	"github.com/ledgerwatch/erigon/smt/pkg/utils"
 	"github.com/ledgerwatch/log/v3"
 )
@@ -86,21 +87,25 @@ func NewRoEriDb(tx kv.Getter) *EriRoDb {
 }
 
 func (m *EriDb) OpenBatch(quitCh <-chan struct{}) {
-	batch := olddb.NewHashBatch(m.kvTx, quitCh, "./tempdb")
+	batch := membatch.NewHashBatch(m.kvTx, quitCh, "./tempdb", log.New())
 	defer func() {
-		batch.Rollback()
+		batch.Close()
 	}()
 	m.tx = batch
 	m.kvTxRo = batch
 }
 
 func (m *EriDb) CommitBatch() error {
-	if _, ok := m.tx.(ethdb.DbWithPendingMutations); !ok {
+	batch, ok := m.tx.(kv.PendingMutations)
+	if !ok {
+
 		return nil // don't roll back a kvRw tx
 	}
-	err := m.tx.Commit()
+	// err := m.tx.Commit()
+	err := batch.Flush(context.Background(), m.kvTx)
 	if err != nil {
-		m.tx.Rollback()
+		// m.tx.Rollback()
+		batch.Close()
 		return err
 	}
 	m.tx = m.kvTx
@@ -109,10 +114,10 @@ func (m *EriDb) CommitBatch() error {
 }
 
 func (m *EriDb) RollbackBatch() {
-	if _, ok := m.tx.(ethdb.DbWithPendingMutations); !ok {
+	if _, ok := m.tx.(kv.PendingMutations); !ok {
 		return // don't roll back a kvRw tx
 	}
-	m.tx.Rollback()
+	m.tx.(kv.PendingMutations).Close()
 	m.tx = m.kvTx
 	m.kvTxRo = m.kvTx
 }
@@ -298,6 +303,19 @@ func (m *EriRoDb) GetCode(codeHash []byte) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func (m *EriDb) AddCode(code []byte) error {
+	codeHash := utils.HashContractBytecode(hex.EncodeToString(code))
+
+	codeHashBytes, err := hex.DecodeString(strings.TrimPrefix(codeHash, "0x"))
+	if err != nil {
+		return err
+	}
+
+	codeHashBytes = utils.ResizeHashTo32BytesByPrefixingWithZeroes(codeHashBytes)
+
+	return m.tx.Put(kv.Code, codeHashBytes, code)
 }
 
 func (m *EriRoDb) PrintDb() {

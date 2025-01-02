@@ -22,10 +22,6 @@ type BatchCounterCollector struct {
 	rlpCombinedCounters        Counters
 	executionCombinedCounters  Counters
 	processingCombinedCounters Counters
-
-	rlpCombinedCountersCache        Counters
-	executionCombinedCountersCache  Counters
-	processingCombinedCountersCache Counters
 }
 
 func NewBatchCounterCollector(smtMaxLevel int, forkId uint16, mcpReduction float64, unlimitedCounters bool, addonCounters *Counters) *BatchCounterCollector {
@@ -146,6 +142,10 @@ func (bcc *BatchCounterCollector) processBatchLevelData() error {
 
 // CheckForOverflow returns true in the case that any counter has less than 0 remaining
 func (bcc *BatchCounterCollector) CheckForOverflow(verifyMerkleProof bool) (bool, error) {
+	// unlimited counters shouldn't overflow
+	if bcc.unlimitedCounters {
+		return false, nil
+	}
 	combined, err := bcc.CombineCollectors(verifyMerkleProof)
 	if err != nil {
 		return false, err
@@ -168,6 +168,22 @@ func (bcc *BatchCounterCollector) CheckForOverflow(verifyMerkleProof bool) (bool
 	}
 
 	return overflow, nil
+}
+
+// CounterStats returns a string with combined counter stats.
+func (bcc *BatchCounterCollector) CounterStats(verifyMerkleProof bool) (string, error) {
+	combined, err := bcc.CombineCollectors(verifyMerkleProof)
+	if err != nil {
+		return "", err
+	}
+
+	// Collect counter stats for logging if overflow is detected
+	logText := "[VCOUNTER] Counters stats:"
+	for _, v := range combined {
+		logText += fmt.Sprintf(" %s: initial: %v, used: %v, remaining: %v;", v.name, v.initialAmount, v.used, v.remaining)
+	}
+
+	return logText, nil
 }
 
 func (bcc *BatchCounterCollector) NewCounters() Counters {
@@ -227,7 +243,7 @@ func (bcc *BatchCounterCollector) CombineCollectors(verifyMerkleProof bool) (Cou
 		}
 	}
 
-	for k, _ := range combined {
+	for k := range combined {
 		val := bcc.rlpCombinedCounters[k].used + bcc.executionCombinedCounters[k].used + bcc.processingCombinedCounters[k].used
 		combined[k].used += val
 		combined[k].remaining -= val
@@ -259,19 +275,15 @@ func (bcc *BatchCounterCollector) CombineCollectorsNoChanges() Counters {
 		}
 	}
 
+	txCounters := NewCounters()
 	for _, tx := range bcc.transactions {
-		for k, v := range tx.rlpCounters.counters {
+		_ = tx.CombineCountersInto(&txCounters)
+		for k, v := range txCounters {
 			combined[k].used += v.used
 			combined[k].remaining -= v.used
 		}
-		for k, v := range tx.executionCounters.counters {
-			combined[k].used += v.used
-			combined[k].remaining -= v.used
-		}
-		for k, v := range tx.processingCounters.counters {
-			combined[k].used += v.used
-			combined[k].remaining -= v.used
-		}
+
+		txCounters.NullateUsed()
 	}
 
 	return combined

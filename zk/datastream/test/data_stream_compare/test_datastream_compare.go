@@ -25,8 +25,8 @@ func main() {
 	flag.StringVar(&stream2, "stream2", "", "the second stream to pull data from")
 	flag.Parse()
 
-	client1 := client.NewClient(ctx, stream1, 0, 0, 0)
-	client2 := client.NewClient(ctx, stream2, 0, 0, 0)
+	client1 := client.NewClient(ctx, stream1, false, 0, 0, 0)
+	client2 := client.NewClient(ctx, stream2, false, 0, 0, 0)
 
 	err := client1.Start()
 	if err != nil {
@@ -81,7 +81,7 @@ func readFromClient(client *client.StreamClient, total int) ([]interface{}, erro
 
 LOOP:
 	for {
-		entry := <-client.GetEntryChan()
+		entry := <-*client.GetEntryChan()
 
 		switch entry.(type) {
 		case types.FullL2Block:

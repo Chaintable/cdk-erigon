@@ -5,15 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"math/big"
+	"time"
 
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
-	"github.com/gateway-fm/cdk-erigon-lib/common/datadir"
-	"github.com/gateway-fm/cdk-erigon-lib/kv"
-	"github.com/gateway-fm/cdk-erigon-lib/kv/memdb"
-	libstate "github.com/gateway-fm/cdk-erigon-lib/state"
-	"github.com/ledgerwatch/erigon/chain"
+	"github.com/ledgerwatch/erigon-lib/chain"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/datadir"
+	"github.com/ledgerwatch/erigon-lib/kv"
+	libstate "github.com/ledgerwatch/erigon-lib/state"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
@@ -34,7 +33,10 @@ import (
 	zkStages "github.com/ledgerwatch/erigon/zk/stages"
 	zkUtils "github.com/ledgerwatch/erigon/zk/utils"
 	"github.com/ledgerwatch/log/v3"
-	"time"
+
+	"github.com/ledgerwatch/erigon-lib/kv/membatchwithdb"
+	"github.com/holiman/uint256"
+	"math"
 )
 
 var (
@@ -44,33 +46,36 @@ var (
 )
 
 type Generator struct {
-	tx          kv.Tx
-	dirs        datadir.Dirs
-	historyV3   bool
-	agg         *libstate.AggregatorV3
-	blockReader services.FullBlockReader
-	chainCfg    *chain.Config
-	zkConfig    *ethconfig.Zk
-	engine      consensus.EngineReader
+	tx              kv.Tx
+	dirs            datadir.Dirs
+	historyV3       bool
+	agg             *libstate.Aggregator
+	blockReader     services.FullBlockReader
+	chainCfg        *chain.Config
+	zkConfig        *ethconfig.Zk
+	engine          consensus.EngineReader
+	forcedContracts []libcommon.Address
 }
 
 func NewGenerator(
 	dirs datadir.Dirs,
 	historyV3 bool,
-	agg *libstate.AggregatorV3,
+	agg *libstate.Aggregator,
 	blockReader services.FullBlockReader,
 	chainCfg *chain.Config,
 	zkConfig *ethconfig.Zk,
 	engine consensus.EngineReader,
+	forcedContracs []libcommon.Address,
 ) *Generator {
 	return &Generator{
-		dirs:        dirs,
-		historyV3:   historyV3,
-		agg:         agg,
-		blockReader: blockReader,
-		chainCfg:    chainCfg,
-		zkConfig:    zkConfig,
-		engine:      engine,
+		dirs:            dirs,
+		historyV3:       historyV3,
+		agg:             agg,
+		blockReader:     blockReader,
+		chainCfg:        chainCfg,
+		zkConfig:        zkConfig,
+		engine:          engine,
+		forcedContracts: forcedContracs,
 	}
 }
 
@@ -85,7 +90,7 @@ func (g *Generator) GetWitnessByBatch(tx kv.Tx, ctx context.Context, batchNum ui
 	}
 	if badBatch {
 		// we need the header of the block prior to this batch to build up the blocks
-		previousHeight, err := reader.GetHighestBlockInBatch(batchNum - 1)
+		previousHeight, _, err := reader.GetHighestBlockInBatch(batchNum - 1)
 		if err != nil {
 			return nil, err
 		}
@@ -191,6 +196,12 @@ func (g *Generator) generateWitness(tx kv.Tx, ctx context.Context, batchNum uint
 		log.Info("Generating witness timing", "batch", batchNum, "blockFrom", blocks[0].NumberU64(), "blockTo", blocks[len(blocks)-1].NumberU64(), "taken", diff)
 	}()
 
+	areExecutorUrlsEmpty := len(g.zkConfig.ExecutorUrls) == 0 || g.zkConfig.ExecutorUrls[0] == ""
+	shouldGenerateMockWitness := g.zkConfig.MockWitnessGeneration && areExecutorUrlsEmpty
+	if shouldGenerateMockWitness {
+		return g.generateMockWitness(batchNum, blocks, debug)
+	}
+
 	endBlock := blocks[len(blocks)-1].NumberU64()
 	startBlock := blocks[0].NumberU64()
 
@@ -203,7 +214,7 @@ func (g *Generator) generateWitness(tx kv.Tx, ctx context.Context, batchNum uint
 		return nil, fmt.Errorf("block number is in the future latest=%d requested=%d", latestBlock, endBlock)
 	}
 
-	batch := memdb.NewMemoryBatchWithSize(tx, g.dirs.Tmp, g.zkConfig.WitnessMemdbSize)
+	batch := membatchwithdb.NewMemoryBatchWithSize(tx, g.dirs.Tmp, g.zkConfig.WitnessMemdbSize)
 	defer batch.Rollback()
 	if err = zkUtils.PopulateMemoryMutationTables(batch); err != nil {
 		return nil, err
@@ -223,8 +234,7 @@ func (g *Generator) generateWitness(tx kv.Tx, ctx context.Context, batchNum uint
 		stageState := &stagedsync.StageState{BlockNumber: latestBlock}
 
 		hashStageCfg := stagedsync.StageHashStateCfg(nil, g.dirs, g.historyV3, g.agg)
-		hashStageCfg.SetQuiet(true)
-		if err := stagedsync.UnwindHashStateStage(unwindState, stageState, batch, hashStageCfg, ctx, true); err != nil {
+		if err := stagedsync.UnwindHashStateStage(unwindState, stageState, batch, hashStageCfg, ctx, log.New(), true); err != nil {
 			return nil, fmt.Errorf("unwind hash state: %w", err)
 		}
 
@@ -322,10 +332,9 @@ func (g *Generator) generateWitness(tx kv.Tx, ctx context.Context, batchNum uint
 
 		getHashFn := core.GetHashFn(block.Header(), getHeader)
 
-		chainReader := stagedsync.NewChainReaderImpl(g.chainCfg, tx, nil)
+		chainReader := stagedsync.NewChainReaderImpl(g.chainCfg, tx, nil, log.New())
 
 		_, err = core.ExecuteBlockEphemerallyZk(g.chainCfg, &vmConfig, getHashFn, engine, block, tds, trieStateWriter, chainReader, nil, hermezDb, &prevStateRoot)
-
 		if err != nil {
 			return nil, err
 		}
@@ -333,12 +342,23 @@ func (g *Generator) generateWitness(tx kv.Tx, ctx context.Context, batchNum uint
 		prevStateRoot = block.Root()
 	}
 
+	inclusion := make(map[libcommon.Address][]libcommon.Hash)
+	for _, contract := range g.forcedContracts {
+		err = reader.ForEachStorage(contract, libcommon.Hash{}, func(key, secKey libcommon.Hash, value uint256.Int) bool {
+			inclusion[contract] = append(inclusion[contract], key)
+			return false
+		}, math.MaxInt64)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var rl trie.RetainDecider
 	// if full is true, we will send all the nodes to the witness
 	rl = &trie.AlwaysTrueRetainDecider{}
 
 	if !witnessFull {
-		rl, err = tds.ResolveSMTRetainList()
+		rl, err = tds.ResolveSMTRetainList(inclusion)
 		if err != nil {
 			return nil, err
 		}
@@ -362,4 +382,22 @@ func getWitnessBytes(witness *trie.Witness, debug bool) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func (g *Generator) generateMockWitness(batchNum uint64, blocks []*eritypes.Block, debug bool) ([]byte, error) {
+	mockWitness := []byte("mockWitness")
+	startBlockNumber := blocks[0].NumberU64()
+	endBlockNumber := blocks[len(blocks)-1].NumberU64()
+
+	if debug {
+		log.Info(
+			"Generated mock witness",
+			"witness", mockWitness,
+			"batch", batchNum,
+			"startBlockNumber", startBlockNumber,
+			"endBlockNumber", endBlockNumber,
+		)
+	}
+
+	return mockWitness, nil
 }

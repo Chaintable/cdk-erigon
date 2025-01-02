@@ -4,14 +4,16 @@ import (
 	"time"
 
 	"github.com/c2h5oh/datasize"
-	"github.com/gateway-fm/cdk-erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common"
 )
 
 type Zk struct {
 	L2ChainId                              uint64
 	L2RpcUrl                               string
 	L2DataStreamerUrl                      string
+	L2DataStreamerUseTLS                   bool
 	L2DataStreamerTimeout                  time.Duration
+	L2ShortCircuitToVerifiedBatch          bool
 	L1SyncStartBlock                       uint64
 	L1SyncStopBatch                        uint64
 	L1ChainId                              uint64
@@ -22,12 +24,14 @@ type Zk struct {
 	AddressZkevm                           common.Address
 	AddressGerManager                      common.Address
 	L1ContractAddressCheck                 bool
+	L1ContractAddressRetrieve              bool
 	L1RollupId                             uint64
 	L1BlockRange                           uint64
 	L1QueryDelay                           uint64
 	L1HighestBlockType                     string
 	L1MaticContractAddress                 common.Address
 	L1FirstBlock                           uint64
+	L1FinalizedBlockRequirement            uint64
 	L1CacheEnabled                         bool
 	L1CachePort                            uint
 	RpcRateLimits                          int
@@ -36,8 +40,12 @@ type Zk struct {
 	SequencerBlockSealTime                 time.Duration
 	SequencerBatchSealTime                 time.Duration
 	SequencerBatchVerificationTimeout      time.Duration
+	SequencerBatchVerificationRetries      int
 	SequencerTimeoutOnEmptyTxPool          time.Duration
 	SequencerHaltOnBatchNumber             uint64
+	SequencerResequence                    bool
+	SequencerResequenceStrict              bool
+	SequencerResequenceReuseL1InfoIndex    bool
 	ExecutorUrls                           []string
 	ExecutorStrictMode                     bool
 	ExecutorRequestTimeout                 time.Duration
@@ -80,14 +88,27 @@ type Zk struct {
 	ExecutorPayloadOutput       string
 
 	TxPoolRejectSmartContractDeployments bool
+
+	InitialBatchCfgFile            string
+	ACLPrintHistory                int
+	InfoTreeUpdateInterval         time.Duration
+	BadBatches                     []uint64
+	SealBatchImmediatelyOnOverflow bool
+	MockWitnessGeneration          bool
+	WitnessContractInclusion       []common.Address
 }
 
 var DefaultZkConfig = &Zk{}
 
 func (c *Zk) ShouldCountersBeUnlimited(l1Recovery bool) bool {
-	return l1Recovery || (c.DisableVirtualCounters && !c.ExecutorStrictMode && len(c.ExecutorUrls) != 0)
+	return l1Recovery || (c.DisableVirtualCounters && !c.ExecutorStrictMode && !c.HasExecutors())
 }
 
 func (c *Zk) HasExecutors() bool {
 	return len(c.ExecutorUrls) > 0 && c.ExecutorUrls[0] != ""
+}
+
+// ShouldImportInitialBatch returns true in case initial batch config file name is non-empty string.
+func (c *Zk) ShouldImportInitialBatch() bool {
+	return c.InitialBatchCfgFile != ""
 }

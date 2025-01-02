@@ -8,23 +8,32 @@ import (
 	"sync"
 
 	"github.com/dgravesa/go-parallel/parallel"
-	"github.com/gateway-fm/cdk-erigon-lib/common"
-	libcommon "github.com/gateway-fm/cdk-erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/smt/pkg/utils"
 )
 
+// SetAccountState sets the balance and nonce of an account
 func (s *SMT) SetAccountState(ethAddr string, balance, nonce *big.Int) (*big.Int, error) {
-	keyBalance, err := utils.KeyEthAddrBalance(ethAddr)
-	if err != nil {
-		return nil, err
-	}
-	keyNonce, err := utils.KeyEthAddrNonce(ethAddr)
+	_, err := s.SetAccountBalance(ethAddr, balance)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = s.InsertKA(keyBalance, balance)
+	auxOut, err := s.SetAccountNonce(ethAddr, nonce)
+	if err != nil {
+		return nil, err
+	}
+
+	return auxOut, nil
+}
+
+// SetAccountBalance sets the balance of an account
+func (s *SMT) SetAccountBalance(ethAddr string, balance *big.Int) (*big.Int, error) {
+	keyBalance := utils.KeyEthAddrBalance(ethAddr)
+
+	response, err := s.InsertKA(keyBalance, balance)
 	if err != nil {
 		return nil, err
 	}
@@ -35,19 +44,25 @@ func (s *SMT) SetAccountState(ethAddr string, balance, nonce *big.Int) (*big.Int
 		return nil, err
 	}
 
-	auxRes, err := s.InsertKA(keyNonce, nonce)
+	return response.NewRootScalar.ToBigInt(), err
+}
 
+// SetAccountNonce sets the nonce of an account
+func (s *SMT) SetAccountNonce(ethAddr string, nonce *big.Int) (*big.Int, error) {
+	keyNonce := utils.KeyEthAddrNonce(ethAddr)
+
+	response, err := s.InsertKA(keyNonce, nonce)
 	if err != nil {
 		return nil, err
 	}
 
-	ks = utils.EncodeKeySource(utils.KEY_NONCE, utils.ConvertHexToAddress(ethAddr), common.Hash{})
+	ks := utils.EncodeKeySource(utils.KEY_NONCE, utils.ConvertHexToAddress(ethAddr), common.Hash{})
 	err = s.Db.InsertKeySource(keyNonce, ks)
 	if err != nil {
 		return nil, err
 	}
 
-	return auxRes.NewRootScalar.ToBigInt(), err
+	return response.NewRootScalar.ToBigInt(), nil
 }
 
 func (s *SMT) SetAccountStorage(addr libcommon.Address, acc *accounts.Account) error {
@@ -62,14 +77,8 @@ func (s *SMT) SetAccountStorage(addr libcommon.Address, acc *accounts.Account) e
 }
 
 func (s *SMT) SetContractBytecode(ethAddr string, bytecode string) error {
-	keyContractCode, err := utils.KeyContractCode(ethAddr)
-	if err != nil {
-		return err
-	}
-	keyContractLength, err := utils.KeyContractLength(ethAddr)
-	if err != nil {
-		return err
-	}
+	keyContractCode := utils.KeyContractCode(ethAddr)
+	keyContractLength := utils.KeyContractLength(ethAddr)
 
 	bi, bytecodeLength, err := convertBytecodeToBigInt(bytecode)
 	if err != nil {
@@ -96,13 +105,7 @@ func (s *SMT) SetContractBytecode(ethAddr string, bytecode string) error {
 
 	ks = utils.EncodeKeySource(utils.SC_LENGTH, utils.ConvertHexToAddress(ethAddr), common.Hash{})
 
-	err = s.Db.InsertKeySource(keyContractLength, ks)
-
-	if err != nil {
-		return err
-	}
-
-	return err
+	return s.Db.InsertKeySource(keyContractLength, ks)
 }
 
 func (s *SMT) SetContractStorage(ethAddr string, storage map[string]string, progressChan chan uint64) (*big.Int, error) {
@@ -204,7 +207,12 @@ func (s *SMT) SetContractStorage(ethAddr string, storage map[string]string, prog
 }
 
 func (s *SMT) SetStorage(ctx context.Context, logPrefix string, accChanges map[libcommon.Address]*accounts.Account, codeChanges map[libcommon.Address]string, storageChanges map[libcommon.Address]map[string]string) ([]*utils.NodeKey, []*utils.NodeValue8, error) {
+	if len(storageChanges) == 0 && len(accChanges) == 0 && len(codeChanges) == 0 {
+		return nil, nil, nil
+	}
+
 	var isDelete bool
+	var err error
 
 	storageChangesInitialCapacity := 0
 	for _, storage := range storageChanges {
@@ -218,18 +226,12 @@ func (s *SMT) SetStorage(ctx context.Context, logPrefix string, accChanges map[l
 	for addr, acc := range accChanges {
 		select {
 		case <-ctx.Done():
-			return nil, nil, fmt.Errorf(fmt.Sprintf("[%s] Context done", logPrefix))
+			return nil, nil, fmt.Errorf("[%s] Context done", logPrefix)
 		default:
 		}
 		ethAddr := addr.String()
-		keyBalance, err := utils.KeyEthAddrBalance(ethAddr)
-		if err != nil {
-			return nil, nil, err
-		}
-		keyNonce, err := utils.KeyEthAddrNonce(ethAddr)
-		if err != nil {
-			return nil, nil, err
-		}
+		keyBalance := utils.KeyEthAddrBalance(ethAddr)
+		keyNonce := utils.KeyEthAddrNonce(ethAddr)
 
 		balance := big.NewInt(0)
 		nonce := big.NewInt(0)
@@ -271,19 +273,13 @@ func (s *SMT) SetStorage(ctx context.Context, logPrefix string, accChanges map[l
 	for addr, code := range codeChanges {
 		select {
 		case <-ctx.Done():
-			return nil, nil, fmt.Errorf(fmt.Sprintf("[%s] Context done", logPrefix))
+			return nil, nil, fmt.Errorf("[%s] Context done", logPrefix)
 		default:
 		}
 
 		ethAddr := addr.String()
-		keyContractCode, err := utils.KeyContractCode(ethAddr)
-		if err != nil {
-			return nil, nil, err
-		}
-		keyContractLength, err := utils.KeyContractLength(ethAddr)
-		if err != nil {
-			return nil, nil, err
-		}
+		keyContractCode := utils.KeyContractCode(ethAddr)
+		keyContractLength := utils.KeyContractLength(ethAddr)
 
 		bi, bytecodeLength, err := convertBytecodeToBigInt(code)
 		if err != nil {
@@ -322,7 +318,7 @@ func (s *SMT) SetStorage(ctx context.Context, logPrefix string, accChanges map[l
 	for addr, storage := range storageChanges {
 		select {
 		case <-ctx.Done():
-			return nil, nil, fmt.Errorf(fmt.Sprintf("[%s] Context done", logPrefix))
+			return nil, nil, fmt.Errorf("[%s] Context done", logPrefix)
 		default:
 		}
 		ethAddr := addr.String()
@@ -330,12 +326,8 @@ func (s *SMT) SetStorage(ctx context.Context, logPrefix string, accChanges map[l
 		ethAddrBigIngArray := utils.ScalarToArrayBig(ethAddrBigInt)
 
 		for k, v := range storage {
-			keyStoragePosition, err := utils.KeyContractStorage(ethAddrBigIngArray, k)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			valueBigInt := convertStrintToBigInt(v)
+			keyStoragePosition := utils.KeyContractStorage(ethAddrBigIngArray, k)
+			valueBigInt := convertStringToBigInt(v)
 			keysBatchStorage = append(keysBatchStorage, &keyStoragePosition)
 			if valuesBatchStorage, isDelete, err = appendToValuesBatchStorageBigInt(valuesBatchStorage, valueBigInt); err != nil {
 				return nil, nil, err
@@ -354,8 +346,12 @@ func (s *SMT) SetStorage(ctx context.Context, logPrefix string, accChanges map[l
 		}
 	}
 
-	_, err := s.InsertBatch(ctx, logPrefix, keysBatchStorage, valuesBatchStorage, nil, nil)
-	return keysBatchStorage, valuesBatchStorage, err
+	insertBatchCfg := NewInsertBatchConfig(ctx, logPrefix, true)
+	if _, err = s.InsertBatch(insertBatchCfg, keysBatchStorage, valuesBatchStorage, nil, nil); err != nil {
+		return nil, nil, err
+	}
+
+	return keysBatchStorage, valuesBatchStorage, nil
 }
 
 func (s *SMT) InsertKeySource(nodeKey *utils.NodeKey, key int, accountAddr *libcommon.Address, storagePosition *libcommon.Hash) error {
@@ -368,7 +364,7 @@ func (s *SMT) DeleteKeySource(nodeKey *utils.NodeKey) error {
 }
 
 func calcHashVal(v string) (*utils.NodeValue8, [4]uint64, error) {
-	val := convertStrintToBigInt(v)
+	val := convertStringToBigInt(v)
 
 	x := utils.ScalarToArrayBig(val)
 	value, err := utils.NodeValue8FromBigIntArray(x)
@@ -376,18 +372,15 @@ func calcHashVal(v string) (*utils.NodeValue8, [4]uint64, error) {
 		return nil, [4]uint64{}, err
 	}
 
-	h, err := utils.Hash(value.ToUintArray(), utils.BranchCapacity)
-	if err != nil {
-		return nil, [4]uint64{}, err
-	}
+	h := utils.Hash(value.ToUintArray(), utils.BranchCapacity)
 
 	return value, h, nil
 }
 
-func convertStrintToBigInt(v string) *big.Int {
+func convertStringToBigInt(v string) *big.Int {
 	base := 10
 	if strings.HasPrefix(v, "0x") {
-		v = v[2:]
+		v = strings.TrimPrefix(v, "0x")
 		base = 16
 	}
 
@@ -404,26 +397,14 @@ func appendToValuesBatchStorageBigInt(valuesBatchStorage []*utils.NodeValue8, va
 }
 
 func convertBytecodeToBigInt(bytecode string) (*big.Int, int, error) {
-	hashedBytecode, err := utils.HashContractBytecode(bytecode)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	var parsedBytecode string
-
-	if strings.HasPrefix(bytecode, "0x") {
-		parsedBytecode = bytecode[2:]
-	} else {
-		parsedBytecode = bytecode
-	}
+	bi := utils.HashContractBytecodeBigInt(bytecode)
+	parsedBytecode := strings.TrimPrefix(bytecode, "0x")
 
 	if len(parsedBytecode)%2 != 0 {
 		parsedBytecode = "0" + parsedBytecode
 	}
 
 	bytecodeLength := len(parsedBytecode) / 2
-
-	bi := utils.ConvertHexToBigInt(hashedBytecode)
 
 	if len(bytecode) == 0 {
 		bytecodeLength = 0

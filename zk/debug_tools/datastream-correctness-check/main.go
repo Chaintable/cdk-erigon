@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gateway-fm/cdk-erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/zk/datastream/client"
 	"github.com/ledgerwatch/erigon/zk/datastream/proto/github.com/0xPolygonHermez/zkevm-node/state/datastream"
 	"github.com/ledgerwatch/erigon/zk/datastream/types"
@@ -19,7 +19,7 @@ func main() {
 	}
 
 	// Create client
-	client := client.NewClient(ctx, cfg.Datastream, 3, 500, 0)
+	client := client.NewClient(ctx, cfg.Datastream, false, 3, 500, 0)
 
 	// Start client (connect to the server)
 	defer client.Stop()
