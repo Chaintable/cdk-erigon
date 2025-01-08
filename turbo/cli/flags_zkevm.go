@@ -131,6 +131,13 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		badBatches = append(badBatches, val)
 	}
 
+	// witness cache flags
+	// if dicabled, set limit to 0 and only check for it to be 0 or not
+	witnessCacheEnabled := ctx.Bool(utils.WitnessCacheEnable.Name)
+	witnessCacheLimit := ctx.Uint64(utils.WitnessCacheLimit.Name)
+	if !witnessCacheEnabled {
+		witnessCacheLimit = 0
+	}
 	var witnessInclusion []libcommon.Address
 	for _, s := range strings.Split(ctx.String(utils.WitnessContractInclusion.Name), ",") {
 		if s == "" {
@@ -189,6 +196,7 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		ExecutorMaxConcurrentRequests:          ctx.Int(utils.ExecutorMaxConcurrentRequests.Name),
 		Limbo:                                  ctx.Bool(utils.Limbo.Name),
 		AllowFreeTransactions:                  ctx.Bool(utils.AllowFreeTransactions.Name),
+		RejectLowGasPriceTransactions:          ctx.Bool(utils.RejectLowGasPriceTransactions.Name),
 		AllowPreEIP155Transactions:             ctx.Bool(utils.AllowPreEIP155Transactions.Name),
 		EffectiveGasPriceForEthTransfer:        uint8(math.Round(effectiveGasPriceForEthTransferVal * 255.0)),
 		EffectiveGasPriceForErc20Transfer:      uint8(math.Round(effectiveGasPriceForErc20TransferVal * 255.0)),
@@ -220,6 +228,7 @@ func ApplyFlagsForZkConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 		InfoTreeUpdateInterval:                 ctx.Duration(utils.InfoTreeUpdateInterval.Name),
 		SealBatchImmediatelyOnOverflow:         ctx.Bool(utils.SealBatchImmediatelyOnOverflow.Name),
 		MockWitnessGeneration:                  ctx.Bool(utils.MockWitnessGeneration.Name),
+		WitnessCacheLimit:                      witnessCacheLimit,
 		WitnessContractInclusion:               witnessInclusion,
 	}
 
