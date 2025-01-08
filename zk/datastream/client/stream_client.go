@@ -70,9 +70,6 @@ type StreamClient struct {
 
 	lastError error
 	started   bool
-
-	useTLS    bool
-	tlsConfig *tls.Config
 }
 
 const (

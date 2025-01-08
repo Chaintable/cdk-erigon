@@ -237,6 +237,16 @@ var (
 		Usage: "How often transactions should be committed to the storage",
 		Value: txpoolcfg.DefaultConfig.CommitEvery,
 	}
+	TxpoolPurgeEveryFlag = cli.DurationFlag{
+		Name:  "txpool.purge.every",
+		Usage: "How often transactions should be purged from the storage",
+		Value: txpoolcfg.DefaultConfig.PurgeEvery,
+	}
+	TxpoolPurgeDistanceFlag = cli.DurationFlag{
+		Name:  "txpool.purge.distance",
+		Usage: "Transactions older than this distance will be purged",
+		Value: txpoolcfg.DefaultConfig.PurgeDistance,
+	}
 	// Miner settings
 	MiningEnabledFlag = cli.BoolFlag{
 		Name:  "mine",
@@ -662,6 +672,11 @@ var (
 		Usage: "Allow the sequencer to proceed transactions with 0 gas price",
 		Value: false,
 	}
+	RejectLowGasPriceTransactions = cli.BoolFlag{
+		Name:  "zkevm.reject-low-gas-price-transactions",
+		Usage: "Reject the sequencer to proceed transactions with low gas price",
+		Value: false,
+	}
 	AllowPreEIP155Transactions = cli.BoolFlag{
 		Name:  "zkevm.allow-pre-eip155-transactions",
 		Usage: "Allow the sequencer to proceed pre-EIP155 transactions",
@@ -767,6 +782,16 @@ var (
 		Name:  "zkevm.mock-witness-generation",
 		Usage: "Mock the witness generation",
 		Value: false,
+	}
+	WitnessCacheEnable = cli.BoolFlag{
+		Name:  "zkevm.witness-cache-enable",
+		Usage: "Enable witness cache",
+		Value: false,
+	}
+	WitnessCacheLimit = cli.UintFlag{
+		Name:  "zkevm.witness-cache-limit",
+		Usage: "Amount of blocks behind the last executed one to keep witnesses for. Needs a lot of HDD space. Default value 10 000.",
+		Value: 10000,
 	}
 	WitnessContractInclusion = cli.StringFlag{
 		Name:  "zkevm.witness-contract-inclusion",
@@ -1924,6 +1949,12 @@ func setTxPool(ctx *cli.Context, fullCfg *ethconfig.Config) {
 		fullCfg.TxPool.BlobPriceBump = ctx.Uint64(TxPoolBlobPriceBumpFlag.Name)
 	}
 	cfg.CommitEvery = common2.RandomizeDuration(ctx.Duration(TxPoolCommitEveryFlag.Name))
+
+	purgeEvery := ctx.Duration(TxpoolPurgeEveryFlag.Name)
+	purgeDistance := ctx.Duration(TxpoolPurgeDistanceFlag.Name)
+
+	fullCfg.TxPool.PurgeEvery = common2.RandomizeDuration(purgeEvery)
+	fullCfg.TxPool.PurgeDistance = purgeDistance
 }
 
 func setEthash(ctx *cli.Context, datadir string, cfg *ethconfig.Config) {
