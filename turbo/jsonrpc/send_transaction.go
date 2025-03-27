@@ -13,6 +13,8 @@ import (
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rpc"
+	"github.com/ledgerwatch/erigon/turbo/rpchelper"
+	"github.com/ledgerwatch/erigon/zk/hermez_db"
 	"github.com/ledgerwatch/erigon/zk/utils"
 )
 
@@ -47,6 +49,25 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		return common.Hash{}, err
 	}
 
+	latestBlockNumber, err := rpchelper.GetLatestFinishedBlockNumber(tx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	header, err := api.blockByNumber(ctx, rpc.BlockNumber(latestBlockNumber), tx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	// now get the sender and put a lock in place for them
+	signer := types.MakeSigner(cc, latestBlockNumber, header.Time())
+	sender, err := txn.Sender(*signer)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	api.SenderLocks.AddLock(sender)
+	defer api.SenderLocks.ReleaseLock(sender)
+
 	if txn.Type() != types.LegacyTxType {
 		latestBlock, err := api.blockByNumber(ctx, rpc.LatestBlockNumber, tx)
 
@@ -63,7 +84,13 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		}
 	}
 
-	if api.RejectLowGasPriceTransactions && txn.GetPrice().Uint64() < api.DefaultGasPrice {
+	// check if the price is too low if we are set to reject low gas price transactions
+	if api.RejectLowGasPriceTransactions &&
+		ShouldRejectLowGasPrice(
+			txn.GetPrice().ToBig(),
+			api.gasTracker.GetLowestPrice(),
+			api.RejectLowGasPriceTolerance,
+		) {
 		return common.Hash{}, errors.New("transaction price is too low")
 	}
 
@@ -76,20 +103,6 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		return common.Hash{}, errors.New("only replay-protected (EIP-155) transactions allowed over RPC")
 	}
 
-	// this has been moved to prior to adding of transactions to capture the
-	// pre state of the db - which is used for logging in the messages below
-	tx, err = api.db.BeginRo(ctx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	defer tx.Rollback()
-
-	cc, err = api.chainConfig(ctx, tx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
 	if txn.Protected() {
 		txnChainId := txn.GetChainID()
 		chainId := cc.ChainID
@@ -99,6 +112,17 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 	}
 
 	hash := txn.Hash()
+
+	// [zkevm] - check if the transaction is a bad one
+	hermezDb := hermez_db.NewHermezDbReader(tx)
+	badTxHashCounter, err := hermezDb.GetBadTxHashCounter(hash)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if badTxHashCounter >= api.BadTxAllowance {
+		return common.Hash{}, errors.New("transaction uses too many counters to fit into a batch")
+	}
+
 	res, err := api.txPool.Add(ctx, &txPoolProto.AddRequest{RlpTxs: [][]byte{encodedTx}})
 	if err != nil {
 		return common.Hash{}, err
@@ -129,4 +153,14 @@ func checkTxFee(gasPrice *big.Int, gas uint64, gasCap float64) error {
 		return fmt.Errorf("tx fee (%.2f ether) exceeds the configured cap (%.2f ether)", feeFloat, gasCap)
 	}
 	return nil
+}
+
+func ShouldRejectLowGasPrice(txPrice *big.Int, lowestAllowed *big.Int, rejectLowGasPriceTolerance float64) bool {
+	finalCheck := new(big.Int).Set(lowestAllowed)
+	if rejectLowGasPriceTolerance > 0 {
+		modifier := new(big.Int).SetUint64(uint64(100 - rejectLowGasPriceTolerance*100))
+		finalCheck.Mul(finalCheck, modifier)
+		finalCheck.Div(finalCheck, big.NewInt(100))
+	}
+	return txPrice.Cmp(finalCheck) < 0
 }

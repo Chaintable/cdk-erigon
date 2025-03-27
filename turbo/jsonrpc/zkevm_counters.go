@@ -208,9 +208,21 @@ func (zkapi *ZkEvmAPIImpl) EstimateCounters(ctx context.Context, rpcTx *zkevmRPC
 	if err != nil {
 		return nil, err
 	}
-	collected, err := batchCounters.CombineCollectors(l1InfoIndex != 0)
+
+	if err = txCounters.ProcessTx(ibs, execResult.ReturnData); err != nil {
+		return nil, err
+	}
+
+	batchCounters.UpdateExecutionAndProcessingCountersCache(txCounters)
+
+	overflow, err := batchCounters.CheckForOverflow(l1InfoIndex != 0)
 	if err != nil {
 		return nil, err
+	}
+
+	collected := batchCounters.CombineCollectorsNoChanges()
+	if oocError == nil && overflow {
+		oocError = fmt.Errorf("%s", collected.OverflownAsString())
 	}
 
 	res, err := populateCounters(&collected, execResult, tx.GetGas(), oocError)
@@ -299,15 +311,27 @@ func populateCounters(collected *vm.Counters, execResult *core.ExecutionResult, 
 	return resJson, nil
 }
 
-func getSmtDepth(hermezDb *hermez_db.HermezDbReader, blockNum uint64, config *tracers.TraceConfig_ZkEvm) (int, error) {
-	var smtDepth int
+type IDepthGetter interface {
+	GetClosestSmtDepth(blockNum uint64) (depthBlockNum uint64, smtDepth uint64, err error)
+}
+
+func getSmtDepth(
+	hermezDb IDepthGetter,
+	blockNum uint64,
+	config *tracers.TraceConfig_ZkEvm,
+) (smtDepth int, err error) {
 	if config != nil && config.SmtDepth != nil {
 		smtDepth = *config.SmtDepth
 	} else {
-		depthBlockNum, smtDepth, err := hermezDb.GetClosestSmtDepth(blockNum)
+		var depthBlockNum uint64
+		var smtDepthUint64 uint64
+
+		depthBlockNum, smtDepthUint64, err = hermezDb.GetClosestSmtDepth(blockNum)
 		if err != nil {
 			return 0, err
 		}
+
+		smtDepth = int(smtDepthUint64)
 
 		if depthBlockNum < blockNum {
 			smtDepth += smtDepth / 10

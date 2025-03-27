@@ -375,11 +375,17 @@ type APIImpl struct {
 	SubscribeLogsChannelSize      int
 	logger                        log.Logger
 	VirtualCountersSmtReduction   float64
+	gasTracker                    RpcL1GasPriceTracker
 	RejectLowGasPriceTransactions bool
+	RejectLowGasPriceTolerance    float64
+	BadTxAllowance                uint64
+	SenderLocks                   *SenderLock
+	LogsMaxRange                  uint64
+	DisableVirtualCounters        bool
 }
 
 // NewEthAPI returns APIImpl instance
-func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient, gascap uint64, feecap float64, returnDataLimit int, ethCfg *ethconfig.Config, allowUnprotectedTxs bool, maxGetProofRewindBlockCount int, subscribeLogsChannelSize int, logger log.Logger) *APIImpl {
+func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient, gascap uint64, feecap float64, returnDataLimit int, ethCfg *ethconfig.Config, allowUnprotectedTxs bool, maxGetProofRewindBlockCount int, subscribeLogsChannelSize int, logger log.Logger, gasTracker RpcL1GasPriceTracker, LogsMaxRange uint64) *APIImpl {
 	if gascap == 0 {
 		gascap = uint64(math.MaxUint64 / 2)
 	}
@@ -409,6 +415,12 @@ func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpoo
 		logger:                        logger,
 		VirtualCountersSmtReduction:   ethCfg.VirtualCountersSmtReduction,
 		RejectLowGasPriceTransactions: ethCfg.RejectLowGasPriceTransactions,
+		BadTxAllowance:                ethCfg.BadTxAllowance,
+		SenderLocks:                   NewSenderLock(),
+		LogsMaxRange:                  LogsMaxRange,
+		gasTracker:                    gasTracker,
+		RejectLowGasPriceTolerance:    ethCfg.RejectLowGasPriceTolerance,
+		DisableVirtualCounters:        ethCfg.DisableVirtualCounters,
 	}
 }
 

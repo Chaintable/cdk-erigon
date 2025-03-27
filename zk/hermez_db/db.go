@@ -53,6 +53,7 @@ const PLAIN_STATE_VERSION = "plain_state_version"                       // batch
 const ERIGON_VERSIONS = "erigon_versions"                               // erigon version -> timestamp of startup
 const BATCH_ENDS = "batch_ends"                                         // batch number -> true
 const WITNESS_CACHE = "witness_cache"                                   // block number -> witness for 1 block
+const BAD_TX_HASHES = "bad_tx_hashes"                                   // tx hash -> integer counter
 
 var HermezDbTables = []string{
 	L1VERIFICATIONS,
@@ -89,6 +90,7 @@ var HermezDbTables = []string{
 	PLAIN_STATE_VERSION,
 	ERIGON_VERSIONS,
 	BATCH_ENDS,
+	BAD_TX_HASHES,
 	WITNESS_CACHE,
 }
 
@@ -1890,13 +1892,28 @@ func (db *HermezDbReader) getForkIntervals(forkIdFilter *uint64) ([]types.ForkIn
 	return forkIntervals, nil
 }
 
+func (db *HermezDb) WriteBadTxHashCounter(txHash common.Hash, counter uint64) error {
+	return db.tx.Put(BAD_TX_HASHES, txHash.Bytes(), Uint64ToBytes(counter))
+}
+
+func (db *HermezDbReader) GetBadTxHashCounter(txHash common.Hash) (uint64, error) {
+	v, err := db.tx.GetOne(BAD_TX_HASHES, txHash.Bytes())
+	if err != nil {
+		return 0, err
+	}
+	if len(v) == 0 {
+		return 0, nil
+	}
+	return BytesToUint64(v), nil
+}
+
 func (db *HermezDb) WriteWitnessCache(blockNo uint64, witnessBytes []byte) error {
 	key := Uint64ToBytes(blockNo)
 	return db.tx.Put(WITNESS_CACHE, key, witnessBytes)
 }
 
-func (db *HermezDbReader) GetWitnessCache(blockNo uint64) ([]byte, error) {
-	v, err := db.tx.GetOne(WITNESS_CACHE, Uint64ToBytes(blockNo))
+func (db *HermezDbReader) GetWitnessCache(batchNo uint64) ([]byte, error) {
+	v, err := db.tx.GetOne(WITNESS_CACHE, Uint64ToBytes(batchNo))
 	if err != nil {
 		return nil, err
 	}
@@ -1905,4 +1922,43 @@ func (db *HermezDbReader) GetWitnessCache(blockNo uint64) ([]byte, error) {
 
 func (db *HermezDb) DeleteWitnessCaches(from, to uint64) error {
 	return db.deleteFromBucketWithUintKeysRange(WITNESS_CACHE, from, to)
+}
+
+func (db *HermezDb) PurgeWitnessCaches() error {
+	return db.tx.ClearBucket(WITNESS_CACHE)
+}
+
+func (db *HermezDbReader) GetLatestCachedWitnessBatchNo() (uint64, error) {
+	c, err := db.tx.Cursor(WITNESS_CACHE)
+	if err != nil {
+		return 0, err
+	}
+	defer c.Close()
+
+	k, _, err := c.Last()
+	if err != nil {
+		return 0, err
+	}
+
+	return BytesToUint64(k), nil
+}
+
+func (db *HermezDb) TruncateWitnessCacheBelow(below uint64) error {
+	c, err := db.tx.Cursor(WITNESS_CACHE)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	for k, _, err := c.SeekExact(Uint64ToBytes(below - 1)); k != nil; k, _, err = c.Prev() {
+		if err != nil {
+			return err
+		}
+
+		if err = db.tx.Delete(WITNESS_CACHE, k); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

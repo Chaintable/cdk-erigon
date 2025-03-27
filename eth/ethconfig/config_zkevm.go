@@ -49,12 +49,13 @@ type Zk struct {
 	ExecutorUrls                           []string
 	ExecutorStrictMode                     bool
 	ExecutorRequestTimeout                 time.Duration
+	ExecutorEnabled                        bool
 	DatastreamNewBlockTimeout              time.Duration
 	WitnessMemdbSize                       datasize.ByteSize
+	WitnessUnwindLimit                     uint64
 	ExecutorMaxConcurrentRequests          int
 	Limbo                                  bool
 	AllowFreeTransactions                  bool
-	RejectLowGasPriceTransactions          bool
 	AllowPreEIP155Transactions             bool
 	EffectiveGasPriceForEthTransfer        uint8
 	EffectiveGasPriceForErc20Transfer      uint8
@@ -63,6 +64,8 @@ type Zk struct {
 	DefaultGasPrice                        uint64
 	MaxGasPrice                            uint64
 	GasPriceFactor                         float64
+	GasPriceCheckFrequency                 time.Duration
+	GasPriceHistoryCount                   uint64
 	DAUrl                                  string
 	DataStreamHost                         string
 	DataStreamPort                         uint
@@ -97,8 +100,13 @@ type Zk struct {
 	SealBatchImmediatelyOnOverflow bool
 	MockWitnessGeneration          bool
 	WitnessCacheEnabled            bool
-	WitnessCacheLimit              uint64
+	WitnessCachePurge              bool
+	WitnessCacheBatchAheadOffset   uint64
+	WitnessCacheBatchBehindOffset  uint64
 	WitnessContractInclusion       []common.Address
+	BadTxAllowance                 uint64
+	RejectLowGasPriceTransactions  bool
+	RejectLowGasPriceTolerance     float64
 }
 
 var DefaultZkConfig = &Zk{}
@@ -109,6 +117,10 @@ func (c *Zk) ShouldCountersBeUnlimited(l1Recovery bool) bool {
 
 func (c *Zk) HasExecutors() bool {
 	return len(c.ExecutorUrls) > 0 && c.ExecutorUrls[0] != ""
+}
+
+func (c *Zk) UseExecutors() bool {
+	return c.HasExecutors() && c.ExecutorEnabled
 }
 
 // ShouldImportInitialBatch returns true in case initial batch config file name is non-empty string.
