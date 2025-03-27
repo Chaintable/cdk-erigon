@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -56,6 +57,12 @@ type HasChangeSetWriter interface {
 	ChangeSetWriter() *state.ChangeSetWriter
 }
 
+// Designed to be used to call the normal stage loop hook earlier in the process as we want this to be
+// done per block rather than per batch.
+type DoneHook interface {
+	AfterRun(tx kv.Tx, finishProgressBefore uint64, prevUnwindPoint *uint64) error
+}
+
 type SequenceBlockCfg struct {
 	db            kv.RwDB
 	batchSize     datasize.ByteSize
@@ -85,6 +92,9 @@ type SequenceBlockCfg struct {
 	yieldSize      uint16
 
 	infoTreeUpdater *l1infotree.Updater
+
+	decodedTxCache *expirable.LRU[common.Hash, *types.Transaction]
+	doneHook       DoneHook
 }
 
 func StageSequenceBlocksCfg(
@@ -114,6 +124,7 @@ func StageSequenceBlocksCfg(
 	legacyVerifier *verifier.LegacyExecutorVerifier,
 	yieldSize uint16,
 	infoTreeUpdater *l1infotree.Updater,
+	doneHook DoneHook,
 ) SequenceBlockCfg {
 
 	return SequenceBlockCfg{
@@ -141,6 +152,7 @@ func StageSequenceBlocksCfg(
 		legacyVerifier:   legacyVerifier,
 		yieldSize:        yieldSize,
 		infoTreeUpdater:  infoTreeUpdater,
+		doneHook:         doneHook,
 	}
 }
 
@@ -170,10 +182,10 @@ func (sCfg *SequenceBlockCfg) toErigonExecuteBlockCfg() stagedsync.ExecuteBlockC
 
 func validateIfDatastreamIsAheadOfExecution(
 	s *stagedsync.StageState,
-	// u stagedsync.Unwinder,
+// u stagedsync.Unwinder,
 	ctx context.Context,
 	cfg SequenceBlockCfg,
-	// historyCfg stagedsync.HistoryCfg,
+// historyCfg stagedsync.HistoryCfg,
 ) error {
 	roTx, err := cfg.db.BeginRo(ctx)
 	if err != nil {
@@ -338,15 +350,6 @@ func prepareL1AndInfoTreeRelatedStuff(sdb *stageDb, batchState *BatchState, prop
 	return
 }
 
-func prepareTickers(cfg *SequenceBlockCfg) (*time.Ticker, *time.Ticker, *time.Ticker, *time.Ticker) {
-	batchTicker := time.NewTicker(cfg.zk.SequencerBatchSealTime)
-	logTicker := time.NewTicker(10 * time.Second)
-	blockTicker := time.NewTicker(cfg.zk.SequencerBlockSealTime)
-	infoTreeTicker := time.NewTicker(cfg.zk.InfoTreeUpdateInterval)
-
-	return batchTicker, logTicker, blockTicker, infoTreeTicker
-}
-
 // will be called at the start of every new block created within a batch to figure out if there is a new GER
 // we can use or not.  In the special case that this is the first block we just return 0 as we need to use the
 // 0 index first before we can use 1+
@@ -427,7 +430,7 @@ func updateSequencerProgress(tx kv.RwTx, newHeight uint64, newBatch uint64, unwi
 	return nil
 }
 
-func tryHaltSequencer(batchContext *BatchContext, batchState *BatchState, streamWriter *SequencerBatchStreamWriter, u stagedsync.Unwinder, latestBlock uint64) (bool, error) {
+func tryHaltSequencer(batchContext *BatchContext, batchState *BatchState, streamWriter *SequencerBatchStreamWriter, u stagedsync.Unwinder, latestBlock uint64) (bool, bool, error) {
 	if batchContext.cfg.zk.SequencerHaltOnBatchNumber != 0 && batchContext.cfg.zk.SequencerHaltOnBatchNumber == batchState.batchNumber {
 		log.Info(fmt.Sprintf("[%s] Attempting to halt on batch %v, checking for pending verifications", batchContext.s.LogPrefix(), batchState.batchNumber))
 
@@ -439,7 +442,7 @@ func tryHaltSequencer(batchContext *BatchContext, batchState *BatchState, stream
 				time.Sleep(2 * time.Second)
 				needsUnwind, err := updateStreamAndCheckRollback(batchContext, batchState, streamWriter, u)
 				if needsUnwind || err != nil {
-					return needsUnwind, err
+					return needsUnwind, false, err
 				}
 			} else {
 				log.Info(fmt.Sprintf("[%s] No pending verifications, halting sequencer...", batchContext.s.LogPrefix()))
@@ -449,16 +452,21 @@ func tryHaltSequencer(batchContext *BatchContext, batchState *BatchState, stream
 
 		// we need to ensure the batch is also sealed in the datastream at this point
 		if err := finalizeLastBatchInDatastreamIfNotFinalized(batchContext, batchState.batchNumber-1, latestBlock); err != nil {
-			return false, err
+			return false, false, err
 		}
 
+		haltedCount := 0
 		for {
 			log.Info(fmt.Sprintf("[%s] Halt sequencer on batch %d...", batchContext.s.LogPrefix(), batchState.batchNumber))
 			time.Sleep(5 * time.Second) //nolint:gomnd
+			haltedCount++
+			if haltedCount > 3 {
+				return false, true, nil
+			}
 		}
 	}
 
-	return false, nil
+	return false, false, nil
 }
 
 type batchChecker interface {

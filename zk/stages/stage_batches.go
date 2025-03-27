@@ -68,7 +68,6 @@ type DatastreamClient interface {
 	GetProgressAtomic() *atomic.Uint64
 	Start() error
 	Stop() error
-	PrepUnwind()
 	HandleStart() error
 }
 
@@ -201,6 +200,7 @@ func SpawnStageBatches(
 
 	var highestDSL2Block uint64
 	newBlockCheckStartTIme := time.Now()
+	newBlockCheckCounter := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -227,6 +227,11 @@ func SpawnStageBatches(
 		if time.Since(newBlockCheckStartTIme) > 10*time.Second {
 			log.Info(fmt.Sprintf("[%s] Waiting for at least one new block in datastream", logPrefix), "datastreamBlock", highestDSL2Block, "last processed block", stageProgressBlockNo)
 			newBlockCheckStartTIme = time.Now()
+			newBlockCheckCounter++
+			if newBlockCheckCounter > 3 {
+				log.Info(fmt.Sprintf("[%s] No new blocks in datastream, entering stage loop", logPrefix))
+				return nil
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -808,7 +813,11 @@ func newStreamClient(ctx context.Context, cfg BatchesCfg, latestForkId uint64) (
 		}
 	} else {
 		dsClient = cfg.dsClient
-		stopFn = func() {}
+		stopFn = func() {
+			if err := dsClient.Stop(); err != nil {
+				log.Warn("Failed to stop datastream client", "err", err)
+			}
+		}
 	}
 
 	return dsClient, stopFn, nil
@@ -848,5 +857,5 @@ func getHighestDSL2Block(ctx context.Context, batchCfg BatchesCfg, latestFork ui
 
 func buildNewStreamClient(ctx context.Context, batchesCfg BatchesCfg, latestFork uint16) *client.StreamClient {
 	cfg := batchesCfg.zkCfg
-	return client.NewClient(ctx, cfg.L2DataStreamerUrl, cfg.DatastreamVersion, cfg.L2DataStreamerTimeout, latestFork)
+	return client.NewClient(ctx, cfg.L2DataStreamerUrl, cfg.L2DataStreamerUseTLS, cfg.DatastreamVersion, cfg.L2DataStreamerTimeout, latestFork)
 }

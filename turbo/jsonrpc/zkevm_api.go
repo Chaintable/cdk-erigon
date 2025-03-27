@@ -34,7 +34,6 @@ import (
 	"github.com/ledgerwatch/erigon/smt/pkg/smt"
 	smtUtils "github.com/ledgerwatch/erigon/smt/pkg/utils"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
-	"github.com/ledgerwatch/erigon/turbo/trie"
 	"github.com/ledgerwatch/erigon/zk/datastream/server"
 	"github.com/ledgerwatch/erigon/zk/hermez_db"
 	"github.com/ledgerwatch/erigon/zk/legacy_executor_verifier"
@@ -628,7 +627,7 @@ func (api *ZkEvmAPIImpl) GetBatchByNumber(ctx context.Context, rpcBatchNumber rp
 	if api.l1Syncer != nil {
 		accInputHash, err := api.getAccInputHash(ctx, hermezDb, batchNo)
 		if err != nil {
-			log.Error(fmt.Sprintf("failed to get acc input hash for batch %d: %v", batchNo, err))
+			log.Debug(fmt.Sprintf("failed to get acc input hash for batch %d: %v", batchNo, err))
 		}
 		if accInputHash == nil {
 			accInputHash = &common.Hash{}
@@ -1042,6 +1041,7 @@ func (api *ZkEvmAPIImpl) buildGenerator(ctx context.Context, tx kv.Tx, witnessMo
 		api.config.Zk,
 		api.ethApi._engine,
 		api.config.WitnessContractInclusion,
+		api.config.WitnessUnwindLimit,
 	)
 
 	fullWitness := false
@@ -1077,41 +1077,6 @@ func (api *ZkEvmAPIImpl) getBlockRangeWitness(ctx context.Context, db kv.RoDB, s
 
 	if blockNr > endBlockNr {
 		return nil, fmt.Errorf("start block number must be less than or equal to end block number, start=%d end=%d", blockNr, endBlockNr)
-	}
-
-	hermezDb := hermez_db.NewHermezDbReader(tx)
-
-	// we only keep trimmed witnesses in the db
-	if witnessMode == WitnessModeTrimmed {
-		blockWitnesses := make([]*trie.Witness, 0, endBlockNr-blockNr+1)
-		//try to get them from the db, if all are available - do not unwind and generate
-		for blockNum := blockNr; blockNum <= endBlockNr; blockNum++ {
-			witnessBytes, err := hermezDb.GetWitnessCache(blockNum)
-			if err != nil {
-				return nil, err
-			}
-
-			if len(witnessBytes) == 0 {
-				break
-			}
-
-			blockWitness, err := witness.ParseWitnessFromBytes(witnessBytes, false)
-			if err != nil {
-				return nil, err
-			}
-
-			blockWitnesses = append(blockWitnesses, blockWitness)
-		}
-
-		if len(blockWitnesses) == int(endBlockNr-blockNr+1) {
-			// found all, calculate
-			baseWitness, err := witness.MergeWitnesses(ctx, blockWitnesses)
-			if err != nil {
-				return nil, err
-			}
-
-			return witness.GetWitnessBytes(baseWitness, debug)
-		}
 	}
 
 	generator, fullWitness, err := api.buildGenerator(ctx, tx, witnessMode)
@@ -1158,21 +1123,20 @@ func (api *ZkEvmAPIImpl) GetBatchWitness(ctx context.Context, batchNumber uint64
 		checkedMode = *mode
 	}
 
-	isWitnessModeNone := checkedMode == WitnessModeNone
 	rpcModeMatchesNodeMode :=
-		checkedMode == WitnessModeFull && api.config.WitnessFull ||
-			checkedMode == WitnessModeTrimmed && !api.config.WitnessFull
+		checkedMode == WitnessModeTrimmed && !api.config.WitnessFull
 	// we only want to check the cache if no special run mode has been supplied.
 	// or if requested mode matches the node mode
 	// otherwise regenerate it
-	if isWitnessModeNone || rpcModeMatchesNodeMode {
+	if rpcModeMatchesNodeMode {
 		hermezDb := hermez_db.NewHermezDbReader(tx)
-		witnessCached, err := hermezDb.GetWitness(batchNumber)
+		witnessBytes, err := hermezDb.GetWitnessCache(batchNumber)
 		if err != nil {
 			return nil, err
 		}
-		if witnessCached != nil {
-			return witnessCached, nil
+
+		if len(witnessBytes) != 0 {
+			return fmt.Sprintf("0x%x", witnessBytes), nil
 		}
 	}
 
