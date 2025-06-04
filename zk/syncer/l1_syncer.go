@@ -449,14 +449,13 @@ func (s *L1Syncer) getSequencedLogs(jobs <-chan fetchJob, results chan jobResult
 				em := s.getNextEtherman()
 				logs, err = em.FilterLogs(context.Background(), query)
 				if err != nil {
-					log.Debug("getSequencedLogs retry error", "err", err)
+					log.Info("getSequencedLogs retry error", "err", err)
 					retry++
 					if retry > 5 {
-						results <- jobResult{
-							Error: err,
-							Logs:  nil,
-						}
-						return
+						log.Error("L1 syncer (getSequencedLogs) exceeded 5 retries", "retry", retry, "err", err)
+					}
+					if retry > 20 {
+						panic("L1 syncer (getSequencedLogs) exceeded 20 retries")
 					}
 					time.Sleep(time.Duration(retry*2) * time.Second)
 					continue
