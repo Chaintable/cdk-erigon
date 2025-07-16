@@ -85,9 +85,9 @@ func BuildPilelineBlockHeader(block *types.Block) *dtypes.Header {
 	if block.Header().ParentBeaconBlockRoot != nil {
 		blockHeader.ParentBeaconBlockRoot = block.Header().ParentBeaconBlockRoot
 	}
-	if block.Header().RequestsHash != nil {
-		blockHeader.RequestsRoot = block.Header().RequestsHash
-	}
+	// if block.Header().RequestsHash != nil {
+	// 	blockHeader.RequestsRoot = block.Header().RequestsHash
+	// }
 	return &blockHeader
 }
 
