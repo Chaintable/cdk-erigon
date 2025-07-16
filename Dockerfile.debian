@@ -20,19 +20,19 @@ RUN --mount=type=cache,target=/root/.cache \
     make BUILD_TAGS=nosqlite,noboltdb,nosilkworm cdk-erigon integration
 
 
-FROM docker.io/library/golang:1.23-alpine3.17 AS tools-builder
+# FROM docker.io/library/golang:1.23-alpine3.17 AS tools-builder
 
-RUN apk --no-cache add build-base linux-headers git bash ca-certificates libstdc++
-WORKDIR /app
+# RUN apk --no-cache add build-base linux-headers git bash ca-certificates libstdc++
+# WORKDIR /app
 
-ADD Makefile Makefile
-ADD tools.go tools.go
-ADD go.mod go.mod
-ADD go.sum go.sum
+# ADD Makefile Makefile
+# ADD tools.go tools.go
+# ADD go.mod go.mod
+# ADD go.sum go.sum
 
-RUN mkdir -p /app/build/bin
+# RUN mkdir -p /app/build/bin
 
-RUN make db-tools
+# RUN make db-tools
 
 FROM docker.io/library/debian:bullseye
 
