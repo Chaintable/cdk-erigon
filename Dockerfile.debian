@@ -50,12 +50,12 @@ RUN mkdir -p ~/.local/share/erigon
 
 # copy compiled artifacts from builder
 ## first do the mdbx ones - since these wont change as often
-COPY --from=tools-builder /app/build/bin/mdbx_chk /usr/local/bin/mdbx_chk
-COPY --from=tools-builder /app/build/bin/mdbx_copy /usr/local/bin/mdbx_copy
-COPY --from=tools-builder /app/build/bin/mdbx_drop /usr/local/bin/mdbx_drop
-COPY --from=tools-builder /app/build/bin/mdbx_dump /usr/local/bin/mdbx_dump
-COPY --from=tools-builder /app/build/bin/mdbx_load /usr/local/bin/mdbx_load
-COPY --from=tools-builder /app/build/bin/mdbx_stat /usr/local/bin/mdbx_stat
+# COPY --from=tools-builder /app/build/bin/mdbx_chk /usr/local/bin/mdbx_chk
+# COPY --from=tools-builder /app/build/bin/mdbx_copy /usr/local/bin/mdbx_copy
+# COPY --from=tools-builder /app/build/bin/mdbx_drop /usr/local/bin/mdbx_drop
+# COPY --from=tools-builder /app/build/bin/mdbx_dump /usr/local/bin/mdbx_dump
+# COPY --from=tools-builder /app/build/bin/mdbx_load /usr/local/bin/mdbx_load
+# COPY --from=tools-builder /app/build/bin/mdbx_stat /usr/local/bin/mdbx_stat
 
 ## then give each binary its own layer
 COPY --from=builder /app/build/bin/devnet /usr/local/bin/devnet
