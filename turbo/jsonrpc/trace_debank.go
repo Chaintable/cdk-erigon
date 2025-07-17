@@ -237,23 +237,23 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		return nil, fmt.Errorf("tx hash mismatch")
 	}
 
-	// 如果 usedGas 不为 nil，值必须等于 headerGasUsed
-	if *usedGas != header.GasUsed {
-		return nil, fmt.Errorf("usedGas mismatch: got %v, want %v", *usedGas, header.GasUsed)
-	}
+	// // 如果 usedGas 不为 nil，值必须等于 headerGasUsed
+	// if *usedGas != header.GasUsed {
+	// 	return nil, fmt.Errorf("usedGas mismatch: got %v, want %v", *usedGas, header.GasUsed)
+	// }
 
-	// usedBlobGas 不为 nil
-	if header.BlobGasUsed == nil {
-		// 将 headerBlobGasUsed 视为 0
-		if *usedBlobGas != 0 {
-			return nil, fmt.Errorf("usedBlobGas is %v, but headerBlobGasUsed is nil (0 expected)", *usedBlobGas)
-		}
-	} else {
-		// headerBlobGasUsed 不为 nil，二者必须相等
-		if *usedBlobGas != *header.BlobGasUsed {
-			return nil, fmt.Errorf("usedBlobGas mismatch: got %v, want %v", *usedBlobGas, *header.BlobGasUsed)
-		}
-	}
+	// // usedBlobGas 不为 nil
+	// if header.BlobGasUsed == nil {
+	// 	// 将 headerBlobGasUsed 视为 0
+	// 	if *usedBlobGas != 0 {
+	// 		return nil, fmt.Errorf("usedBlobGas is %v, but headerBlobGasUsed is nil (0 expected)", *usedBlobGas)
+	// 	}
+	// } else {
+	// 	// headerBlobGasUsed 不为 nil，二者必须相等
+	// 	if *usedBlobGas != *header.BlobGasUsed {
+	// 		return nil, fmt.Errorf("usedBlobGas mismatch: got %v, want %v", *usedBlobGas, *header.BlobGasUsed)
+	// 	}
+	// }
 
 	// bloom := types.CreateBloom(receipts)
 	// if bloom != header.Bloom {
