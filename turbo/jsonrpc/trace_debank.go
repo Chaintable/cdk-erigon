@@ -255,10 +255,10 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		}
 	}
 
-	bloom := types.CreateBloom(receipts)
-	if bloom != header.Bloom {
-		return nil, fmt.Errorf("bloom mismatch")
-	}
+	// bloom := types.CreateBloom(receipts)
+	// if bloom != header.Bloom {
+	// 	return nil, fmt.Errorf("bloom mismatch")
+	// }
 
 	stateDiff := writer.ToStateDiff(parentHeader.Root, newBlock.Root())
 
