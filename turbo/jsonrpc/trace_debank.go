@@ -226,10 +226,11 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		return nil, fmt.Errorf("state root mismatch")
 	}
 
-	receiptSha := types.DeriveSha(receipts)
-	if chainConfig.IsByzantium(header.Number.Uint64()) && receiptSha != block.ReceiptHash() {
-		return nil, fmt.Errorf("receipt hash mismatch")
-	}
+	// merlin 代码中有些分叉逻辑没有按照区块高度来, 所以这个判断对早期区块不适用
+	// receiptSha := types.DeriveSha(receipts)
+	// if chainConfig.IsByzantium(header.Number.Uint64()) && receiptSha != block.ReceiptHash() {
+	// 	return nil, fmt.Errorf("receipt hash mismatch")
+	// }
 
 	txSha := types.DeriveSha(includedTxs)
 	if txSha != block.TxHash() {
