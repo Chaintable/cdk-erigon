@@ -10,6 +10,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
+	"github.com/ledgerwatch/erigon-lib/metrics"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -23,6 +24,18 @@ import (
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/log/v3"
+)
+
+var (
+	LatestBlockNumber = metrics.GetOrCreateGauge("pipeline_block_num")
+
+	ChainHeadNumber = metrics.GetOrCreateGauge("chain_head_block")
+
+	LatestBlockTime = metrics.GetOrCreateGauge("pipeline_block_time")
+
+	NodeInfo = metrics.GetOrCreateGauge(`pipeline_node_info{role="writer"}`)
+
+	BlockProcessTimer = metrics.GetOrCreateSummary("chain_inserts")
 )
 
 func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (*dtypes.DebankOutPut, error) {
@@ -58,6 +71,10 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		genesis := core.GenesisBlockByChainName(chainConfig.ChainName)
 		return dtracer.OnGenesisBlock(block, genesis.Alloc)
 	}
+
+	LatestBlockNumber.SetUint64(block.NumberU64())
+	ChainHeadNumber.SetUint64(block.NumberU64())
+	LatestBlockTime.SetUint64(block.Time())
 
 	parentHash := block.ParentHash()
 	parentHeader, err := api._blockReader.Header(ctx, dbtx, parentHash, block.NumberU64()-1)
@@ -284,6 +301,7 @@ type DebankOutPutJs struct {
 }
 
 func (api *TraceAPIImpl) DebankBlock(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (*DebankOutPutJs, error) {
+	start := time.Now()
 	output, err := api.DebankBlockRaw(ctx, blockNrOrHash)
 	if err != nil {
 		return nil, err
@@ -293,6 +311,7 @@ func (api *TraceAPIImpl) DebankBlock(ctx context.Context, blockNrOrHash rpc.Bloc
 		return nil, err
 	}
 
+	BlockProcessTimer.Observe(float64(time.Since(start)))
 	return &DebankOutPutJs{
 		BlockFile:      output.BlockFile,
 		Header:         output.Header,

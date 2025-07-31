@@ -43,6 +43,7 @@ type TraceAPIImpl struct {
 
 // NewTraceAPI returns NewTraceAPI instance
 func NewTraceAPI(base *BaseAPI, kv kv.RoDB, cfg *httpcfg.HttpCfg) *TraceAPIImpl {
+	NodeInfo.SetUint64(1)
 	return &TraceAPIImpl{
 		BaseAPI:       base,
 		kv:            kv,
