@@ -14,7 +14,7 @@ on:
 env:
   REGISTRY: 294354037686.dkr.ecr.ap-northeast-1.amazonaws.com
   IMAGE: blockchain-cdk-erigon
-  DOCKERFILE: Dockerfile
+  DOCKERFILE: Dockerfile.debian
 
 jobs:
   make-image:
