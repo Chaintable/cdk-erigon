@@ -5,6 +5,7 @@ on:
     branches:
       - "main"
       - "debank"
+      - "merlin"
   release:
     types:
       - created
