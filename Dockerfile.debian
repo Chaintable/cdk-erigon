@@ -16,7 +16,7 @@ ADD . .
 RUN --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/tmp/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    make erigon
+    make cdk-erigon
 
 
 # FROM docker.io/library/golang:1.23-alpine3.17 AS tools-builder
