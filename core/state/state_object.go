@@ -235,6 +235,9 @@ func (so *stateObject) SetState(key *libcommon.Hash, value uint256.Int) {
 		key:      *key,
 		prevalue: prev,
 	})
+	if so.db.tracingHooks != nil && so.db.tracingHooks.OnStorageChange != nil {
+		so.db.tracingHooks.OnStorageChange(so.address, key, prev, value)
+	}
 	so.setState(key, value)
 }
 
@@ -308,6 +311,9 @@ func (so *stateObject) SetBalance(amount *uint256.Int) {
 		account: &so.address,
 		prev:    so.data.Balance,
 	})
+	if so.db.tracingHooks != nil && so.db.tracingHooks.OnBalanceChange != nil {
+		so.db.tracingHooks.OnBalanceChange(so.address, so.Balance(), amount, 0)
+	}
 	so.setBalance(amount)
 }
 
@@ -355,6 +361,9 @@ func (so *stateObject) SetCode(codeHash libcommon.Hash, code []byte) {
 		prevhash: so.data.CodeHash,
 		prevcode: prevcode,
 	})
+	if so.db.tracingHooks != nil && so.db.tracingHooks.OnCodeChange != nil {
+		so.db.tracingHooks.OnCodeChange(so.address, so.data.CodeHash, prevcode, codeHash, code)
+	}
 	so.setCode(codeHash, code)
 }
 
@@ -369,6 +378,9 @@ func (so *stateObject) SetNonce(nonce uint64) {
 		account: &so.address,
 		prev:    so.data.Nonce,
 	})
+	if so.db.tracingHooks != nil && so.db.tracingHooks.OnNonceChange != nil {
+		so.db.tracingHooks.OnNonceChange(so.address, so.data.Nonce, nonce)
+	}
 	so.setNonce(nonce)
 }
 
