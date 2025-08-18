@@ -57,6 +57,7 @@ func APIList(db kv.RoDB, dbsmt kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 	netImpl := NewNetAPIImpl(eth)
 	debugImpl := NewPrivateDebugAPI(base, db, cfg.Gascap, ethCfg)
 	traceImpl := NewTraceAPI(base, db, cfg)
+	preImpl := NewPreExecAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, nil)
 	web3Impl := NewWeb3APIImpl(eth)
 	dbImpl := NewDBAPIImpl() /* deprecated */
 	adminImpl := NewAdminAPI(eth)
@@ -153,6 +154,13 @@ func APIList(db kv.RoDB, dbsmt kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 				Namespace: "trace",
 				Public:    true,
 				Service:   TraceAPI(traceImpl),
+				Version:   "1.0",
+			})
+		case "pre":
+			list = append(list, rpc.API{
+				Namespace: "pre",
+				Public:    true,
+				Service:   PreExecAPI(preImpl),
 				Version:   "1.0",
 			})
 		case "db": /* Deprecated */

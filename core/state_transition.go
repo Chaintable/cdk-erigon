@@ -239,6 +239,10 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	}
 
 	balanceCheck := gasVal
+	if st.evm.Config().PreExec {
+		balanceCheck = uint256.NewInt(0)
+		blobGasVal = uint256.NewInt(0)
+	}
 	if st.gasFeeCap != nil {
 		balanceCheck = st.sharedBuyGasBalance.SetUint64(st.msg.Gas())
 		balanceCheck, overflow = balanceCheck.MulOverflow(balanceCheck, st.gasFeeCap)
@@ -531,6 +535,9 @@ func (st *StateTransition) refundGas(refundQuotient uint64) {
 
 	// Return ETH for remaining gas, exchanged at the original rate.
 	remaining := new(uint256.Int).Mul(new(uint256.Int).SetUint64(st.gasRemaining), st.gasPrice)
+	if st.evm.Config().PreExec {
+		remaining = uint256.NewInt(0)
+	}
 	st.state.AddBalance(st.msg.From(), remaining)
 
 	// Also return remaining gas to the block gas counter so it is
