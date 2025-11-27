@@ -395,7 +395,7 @@ func (t *callTracer) addTraceAndLog(cf *callFrame, traceAddress []int64) {
 	for i := range cf.Logs {
 		cf.Logs[i].ParentTraceID = cf.TraceID
 		cf.Logs[i].ID = util.ToHash([]string{cf.Logs[i].ParentTraceID, fmt.Sprintf("%d", cf.Logs[i].Position)})
-		if cf.Calls[i].failed() {
+		if cf.failed() || cf.ParentFailed {
 			cf.Logs[i].LogIndex = 0
 			t.BlockFile.ErrorEvents = append(t.BlockFile.ErrorEvents, cf.Logs[i])
 		} else {
@@ -403,7 +403,7 @@ func (t *callTracer) addTraceAndLog(cf *callFrame, traceAddress []int64) {
 		}
 	}
 	for i := range cf.Calls {
-		if cf.failed() || cf.ParentFailed {
+		if cf.Calls[i].failed() {
 			t.BlockFile.ErrorTraces = append(t.BlockFile.ErrorTraces, t.ToTrace(&cf.Calls[i], childTraceAddress(traceAddress, int64(i))))
 		} else {
 			t.BlockFile.Traces = append(t.BlockFile.Traces, t.ToTrace(&cf.Calls[i], childTraceAddress(traceAddress, int64(i))))
