@@ -129,6 +129,8 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 	}
 	stateHeader := dtracer.BuildPilelineBlockHeader(block)
 
+	// Collect ChangeContracts from all tracers to deduplicate them
+	changeContractsMap := make(map[common.Address]struct{})
 	for i, txn := range block.Transactions() {
 		ibs.SetTxContext(txn.Hash(), block.Hash(), i)
 		tracer := dtracer.NewCallTracer(blockFile, txn.Hash().Hex())
@@ -141,9 +143,13 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		if err != nil {
 			return nil, err
 		}
-		receipt, _, err := core.ApplyTransaction2(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, writer, header, txn, usedGas, usedBlobGas, vmConfig, effectiveGasPricePercentage)
+		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, writer, header, txn, usedGas, usedBlobGas, vmConfig, effectiveGasPricePercentage)
 		if err != nil {
 			return nil, fmt.Errorf("trace_debankBlock: bn=%d, txnIdx=%d, %w", header.Number.Uint64(), i, err)
+		}
+		// Collect ChangeContracts from this tracer
+		for addr := range tracer.ChangeContracts {
+			changeContractsMap[addr] = struct{}{}
 		}
 		includedTxs = append(includedTxs, txn)
 		receipts = append(receipts, receipt)
@@ -204,7 +210,7 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 	// }
 
 	stateDiff := writer.ToStateDiff(parentHeader.Root, newBlock.Root())
-	for addr := range writer.StorageChanges {
+	for addr := range changeContractsMap {
 		blockFile.StorageContracts = append(blockFile.StorageContracts, strings.ToLower(addr.Hex()))
 	}
 

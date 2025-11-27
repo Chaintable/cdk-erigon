@@ -410,7 +410,6 @@ func (sdb *IntraBlockState) SetCode(addr libcommon.Address, code []byte) {
 
 // DESCRIBED: docs/programmers_guide/guide.md#address---identifier-of-an-account
 func (sdb *IntraBlockState) SetState(addr libcommon.Address, key *libcommon.Hash, value uint256.Int) {
-	fmt.Printf("SetState called. Address: %x, Key: %x, Value: %s\n", addr, key.Bytes(), value.Hex())
 	stateObject := sdb.GetOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetState(key, value)
@@ -686,10 +685,8 @@ func (sdb *IntraBlockState) GetRefund() uint64 {
 }
 
 func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, addr libcommon.Address, stateObject *stateObject, isDirty bool, tracingHooks *tracing.Hooks) error {
-	fmt.Printf("updateAccount called: EIP161Enabled=%v, isAura=%v, addr=%x, isDirty=%v\n", EIP161Enabled, isAura, addr, isDirty)
 	emptyRemoval := EIP161Enabled && stateObject.empty() && (!isAura || addr != SystemAddress)
 	if stateObject.selfdestructed || (isDirty && emptyRemoval) {
-		fmt.Printf("Deleting account: address=%x, selfdestructed=%v, isDirty=%v, emptyRemoval=%v, balance=%s\n", addr, stateObject.selfdestructed, isDirty, emptyRemoval, stateObject.Balance().String())
 		if tracingHooks != nil && tracingHooks.OnBalanceChange != nil && !stateObject.Balance().IsZero() && stateObject.selfdestructed {
 			tracingHooks.OnBalanceChange(stateObject.address, stateObject.Balance(), uint256.NewInt(0), tracing.BalanceDecreaseSelfdestructBurn)
 		}
@@ -699,30 +696,23 @@ func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, add
 		stateObject.deleted = true
 	}
 	if isDirty && (stateObject.createdContract || !stateObject.selfdestructed) && !emptyRemoval {
-		fmt.Printf("updateAccount: writing account: address=%x, createdContract=%v, selfdestructed=%v, isDirty=%v, emptyRemoval=%v, balance=%s\n",
-			addr, stateObject.createdContract, stateObject.selfdestructed, isDirty, emptyRemoval, stateObject.Balance().String())
 		stateObject.deleted = false
 		// Write any contract code associated with the state object
 		if stateObject.code != nil && stateObject.dirtyCode {
 			if err := stateWriter.UpdateAccountCode(addr, stateObject.data.Incarnation, stateObject.data.CodeHash, stateObject.code); err != nil {
-				fmt.Printf("Reached updateAccount: writing contract code for address=%x\n", addr)
 				return err
 			}
 		}
 		if stateObject.createdContract {
 			if err := stateWriter.CreateContract(addr); err != nil {
-				fmt.Printf("Reached updateAccount: creating contract for address=%x\n", addr)
 				return err
 			}
 		}
 
 		if err := stateObject.updateTrie(stateWriter); err != nil {
-			fmt.Printf("Reached updateTrieError: updating trie for address=%x, error=%v\n", addr, err)
 			return err
 		}
-		fmt.Printf("Reached UpdateAccountData: updating account data for address=%x\n", addr)
 		if err := stateWriter.UpdateAccountData(addr, &stateObject.original, &stateObject.data); err != nil {
-			fmt.Printf("Reached updateAccount: updating account data for address=%x, err=%v\n", addr, err)
 			return err
 		}
 	}
@@ -760,9 +750,6 @@ func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter Stat
 		}
 	}
 	for addr := range sdb.journal.dirties {
-		fmt.Printf("FinalizeTx: journal.dirties (hex): %s\n", addr.Hex())
-	}
-	for addr := range sdb.journal.dirties {
 		so, exist := sdb.stateObjects[addr]
 		if !exist {
 			// ripeMD is 'touched' at block 1714175, in tx 0x1237f737031e40bcde4a8b7e717b2d15e3ecadfe49bb1bbc71ee9deb09c6fcf2
@@ -774,7 +761,6 @@ func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter Stat
 			continue
 		}
 
-		fmt.Printf("FinalizeTx: updating account: address=%x, newlyCreated=%v, selfdestructed=%v, createdContract=%v, empty=%v\n", addr, so.newlyCreated, so.selfdestructed, so.createdContract, so.empty())
 		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, stateWriter, addr, so, true, sdb.tracingHooks); err != nil {
 			return err
 		}
@@ -817,7 +803,6 @@ func (sdb *IntraBlockState) MakeWriteSet(chainRules *chain.Rules, stateWriter St
 		// Print debugging logs for MakeWriteSet
 		// Note: Remove or guard with debug flag in prod
 		// addr, stateObjectsDirty, isDirty, stateObject
-		fmt.Printf("[MakeWriteSet] addr: %s, stateObjectsDirty: %v, isDirty: %v, stateObject: %+v\n", addr.String(), sdb.stateObjectsDirty, isDirty, stateObject)
 		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, stateWriter, addr, stateObject, isDirty, sdb.tracingHooks); err != nil {
 			return err
 		}

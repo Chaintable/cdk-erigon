@@ -266,14 +266,11 @@ func (so *stateObject) setState(key *libcommon.Hash, value uint256.Int) {
 
 // updateTrie writes cached storage modifications into the object's storage trie.
 func (so *stateObject) updateTrie(stateWriter StateWriter) error {
-	fmt.Printf("updateTrie called: address=%x, incarnation=%d\n", so.address, so.data.GetIncarnation())
 	for key, value := range so.dirtyStorage {
-		fmt.Printf("updateTrie: key=%x, value=%s\n", key, value.Hex())
 		value := value
 		original := so.blockOriginStorage[key]
 		so.originStorage[key] = value
 		if err := stateWriter.WriteAccountStorage(so.address, so.data.GetIncarnation(), &key, &original, &value); err != nil {
-			fmt.Printf("Reached updateTrie: writing account storage for address=%x, key=%x, original=%s, value=%s, error=%v\n", so.address, key, original.String(), value.String(), err)
 			return err
 		}
 	}

@@ -17,8 +17,6 @@
 package core
 
 import (
-	"fmt"
-
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
@@ -124,98 +122,4 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
 	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedBlobGas, vmenv, cfg, effectiveGasPricePercentage)
-}
-
-// ApplyTransaction attempts to apply a transaction to the given state database
-// and uses the input parameters for its environment. It returns the receipt
-// for the transaction, gas used and an error if the transaction failed,
-// indicating the block was invalid.
-func ApplyTransaction2(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64, cfg vm.Config, effectiveGasPricePercentage uint8) (*types.Receipt, []byte, error) {
-	// Create a new context to be used in the EVM environment
-
-	// Add addresses to access list if applicable
-	// about the transaction and calling mechanisms.
-	cfg.SkipAnalysis = SkipAnalysis(config, header.Number.Uint64())
-
-	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author)
-	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
-
-	return applyTransaction2(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedBlobGas, vmenv, cfg, effectiveGasPricePercentage)
-}
-
-func applyTransaction2(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64, evm *vm.EVM, cfg vm.Config, effectiveGasPricePercentage uint8) (*types.Receipt, []byte, error) {
-	rules := evm.ChainRules()
-	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64(), header.Time), header.BaseFee, rules)
-	if err != nil {
-		return nil, nil, err
-	}
-	msg.SetEffectiveGasPricePercentage(effectiveGasPricePercentage)
-	msg.SetCheckNonce(!cfg.StatelessExec)
-
-	// apply effective gas percentage here, so it is actual for all further calculations
-	if evm.ChainRules().IsForkID5Dragonfruit {
-		msg.SetGasPrice(CalculateEffectiveGas(msg.GasPrice(), effectiveGasPricePercentage))
-	}
-
-	if msg.FeeCap().IsZero() && engine != nil {
-		// Only zero-gas transactions may be service ones
-		syscall := func(contract libcommon.Address, data []byte) ([]byte, error) {
-			return SysCallContract(contract, data, config, ibs, header, engine, true /* constCall */)
-		}
-		msg.SetIsFree(engine.IsServiceTransaction(msg.From(), syscall))
-	}
-
-	txContext := NewEVMTxContext(msg)
-	if cfg.TraceJumpDest {
-		txContext.TxHash = tx.Hash()
-	}
-
-	// Update the evm with the new transaction context.
-	evm.Reset(txContext, ibs)
-
-	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Update the state with pending changes
-	fmt.Printf("ApplyTransaction2: FinalizeTx called, stateWriter=%T\n", stateWriter)
-	if err = ibs.FinalizeTx(rules, stateWriter); err != nil {
-		fmt.Printf("ApplyTransaction2: FinalizeTx error=%v\n", err)
-		return nil, nil, err
-	}
-	*usedGas += result.UsedGas
-	if usedBlobGas != nil {
-		*usedBlobGas += tx.GetBlobGas()
-	}
-
-	// Set the receipt logs and create the bloom filter.
-	// based on the eip phase, we're passing whether the root touch-delete accounts.
-	var receipt *types.Receipt
-	if !cfg.NoReceipts {
-		// by the tx.
-		receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
-		if result.Failed() {
-			receipt.Status = types.ReceiptStatusFailed
-		} else {
-			receipt.Status = types.ReceiptStatusSuccessful
-		}
-		receipt.TxHash = tx.Hash()
-		receipt.GasUsed = result.UsedGas
-		// if the transaction created a contract, store the creation address in the receipt.
-		if msg.To() == nil {
-			receipt.ContractAddress = crypto.CreateAddress(evm.Origin, tx.GetNonce())
-		}
-		// Set the receipt logs and create a bloom for filtering
-		receipt.Logs = ibs.GetLogs(tx.Hash())
-
-		// [zkevm] - ignore the bloom at this point due to a bug in zknode where the bloom is not included
-		// in the block during execution
-		//receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-
-		receipt.BlockNumber = header.Number
-		receipt.TransactionIndex = uint(ibs.TxIndex())
-	}
-
-	return receipt, result.ReturnData, err
 }
