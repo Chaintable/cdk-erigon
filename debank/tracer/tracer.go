@@ -77,6 +77,9 @@ func (bs *BlockStorageDiffMap) UpdateAccountData(address common.Address, origina
 		Nonce:    account.Nonce,
 		CodeHash: account.CodeHash,
 	}
+	if original.Root != account.Root {
+		bs.StorageChanges[address] = struct{}{}
+	}
 	return nil
 }
 
@@ -392,7 +395,7 @@ func (t *callTracer) addTraceAndLog(cf *callFrame, traceAddress []int64) {
 	for i := range cf.Logs {
 		cf.Logs[i].ParentTraceID = cf.TraceID
 		cf.Logs[i].ID = util.ToHash([]string{cf.Logs[i].ParentTraceID, fmt.Sprintf("%d", cf.Logs[i].Position)})
-		if cf.failed() || cf.ParentFailed {
+		if cf.Calls[i].failed() {
 			cf.Logs[i].LogIndex = 0
 			t.BlockFile.ErrorEvents = append(t.BlockFile.ErrorEvents, cf.Logs[i])
 		} else {

@@ -157,80 +157,6 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		blockFile.Txs = append(blockFile.Txs, tx)
 	}
 
-	if chainConfig.Bor != nil {
-		// var borTx types.Transaction
-		// var borTxHash common.Hash
-		// if api.useBridgeReader {
-		// 	possibleBorTxnHash := bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
-		// 	_, ok, err := api.bridgeReader.EventTxnLookup(ctx, possibleBorTxnHash)
-		// 	if err != nil {
-		// 		return nil, err
-		// 	}
-		// 	if ok {
-		// 		borTx = bortypes.NewBorTransaction()
-		// 		borTxHash = possibleBorTxnHash
-		// 	}
-		// } else {
-		// 	borTx = rawdb.ReadBorTransactionForBlock(dbtx, block.NumberU64())
-		// 	if borTx != nil {
-		// 		borTxHash = bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
-		// 	}
-		// }
-		// if borTx != nil {
-		// 	var stateSyncEvents []*types.Message
-		// 	stateSyncEvents, err = api.stateSyncEvents(ctx, dbtx, header.Hash(), blockNumber, chainConfig)
-		// 	if err != nil {
-		// 		return nil, err
-		// 	}
-		// 	stateReceiverContract := chainConfig.Bor.(*borcfg.BorConfig).StateReceiverContractAddress()
-		// 	txCtx := evmtypes.TxContext{
-		// 		TxHash:   bortypes.ComputeBorTxHash(blockNumber, blockHash),
-		// 		Origin:   common.Address{},
-		// 		GasPrice: uint256.NewInt(0),
-		// 	}
-		// 	vmConfig.Debug = true
-		// 	atracer := dtracer.NewCallTracer(blockFile, txCtx.TxHash.Hex())
-		// 	vmConfig.Tracer = atracer
-		// 	if vmConfig.Tracer != nil {
-		// 		vmConfig.Tracer = tracer.NewBorStateSyncTxnTracer(vmConfig.Tracer, len(stateSyncEvents), stateReceiverContract)
-		// 	}
-		// 	ibs.SetTxContext(len(block.Transactions()))
-		// 	ibs.SetHooks(&tracing.Hooks{
-		// 		OnLog: atracer.OnLog,
-		// 	})
-		// 	blockCtx := transactions.NewEVMBlockContext(engine, header, true, dbtx, api._blockReader, chainConfig)
-		// 	evm := vm.NewEVM(blockCtx, txCtx, ibs, chainConfig, vmConfig)
-		// 	rules := chainConfig.Rules(blockNumber, block.Time())
-		// 	for _, msg := range stateSyncEvents {
-		// 		gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())
-		// 		_, err := core.ApplyMessage(evm, msg, gp, true, false /* gasBailout */, api.engine())
-		// 		if err != nil {
-		// 			return nil, err
-		// 		}
-
-		// 		err = ibs.FinalizeTx(rules, writer)
-		// 		if err != nil {
-		// 			return nil, err
-		// 		}
-
-		// 		evm.Reset(txCtx, ibs)
-		// 	}
-
-		// 	receipt := types.Receipt{
-		// 		Type:             0,
-		// 		TxHash:           bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash()),
-		// 		GasUsed:          0,
-		// 		BlockHash:        block.Hash(),
-		// 		BlockNumber:      block.Number(),
-		// 		TransactionIndex: uint(len(block.Transactions())),
-		// 		Status:           types.ReceiptStatusSuccessful,
-		// 	}
-
-		// 	tx := dtracer.BuildBorPipelineTransaction(borTx, &receipt, borTxHash)
-		// 	blockFile.Txs = append(blockFile.Txs, tx)
-		// }
-	}
-
 	//chainReader := consensuschain.NewReader(chainConfig, dbtx, api._blockReader, logger)
 	chainReader := stagedsync.NewChainReaderImpl(chainConfig, dbtx, nil, logger)
 
@@ -278,7 +204,6 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 	// }
 
 	stateDiff := writer.ToStateDiff(parentHeader.Root, newBlock.Root())
-
 	for addr := range writer.StorageChanges {
 		blockFile.StorageContracts = append(blockFile.StorageContracts, strings.ToLower(addr.Hex()))
 	}
