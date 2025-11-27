@@ -77,6 +77,14 @@ func (bs *BlockStorageDiffMap) UpdateAccountData(address common.Address, origina
 		Nonce:    account.Nonce,
 		CodeHash: account.CodeHash,
 	}
+	// INSERT_YOUR_CODE
+	// Log values of original and account for debugging
+	// You can replace this with an actual logger if needed
+	fmt.Printf("UpdateAccountData called for %s\ngorignal: Balance=%s, Nonce=%d, CodeHash=%s, Root=%s\naccount: Balance=%s, Nonce=%d, CodeHash=%s, Root=%s\n",
+		address.Hex(),
+		original.Balance.String(), original.Nonce, original.CodeHash.Hex(), original.Root.Hex(),
+		account.Balance.String(), account.Nonce, account.CodeHash.Hex(), account.Root.Hex(),
+	)
 	if original.Root != account.Root {
 		bs.StorageChanges[address] = struct{}{}
 	}
@@ -106,6 +114,8 @@ func (bs *BlockStorageDiffMap) WriteAccountStorage(address common.Address, incar
 	storageDiff := bs.StorageDiff[addrhash]
 	storageDiff[crypto.Keccak256Hash(key.Bytes())] = value
 	bs.StorageChanges[address] = struct{}{}
+	fmt.Printf("WriteAccountStorage called for %s, key=%s, original=%s, value=%s\n",
+		address.Hex(), key.Hex(), original.String(), value.String())
 	return nil
 }
 
@@ -334,6 +344,20 @@ func (t *callTracer) CaptureEnd(output []byte, usedGas uint64, err error) {
 
 func (t *callTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, opDepth int, err error) {
 	if op == vm.SSTORE {
+		fmt.Printf("CaptureState called for SSTORE at pc=%d, gas=%d, cost=%d, opDepth=%d, err=%v\n", pc, gas, cost, opDepth, err)
+		// Print the callstack for debugging purposes
+		fmt.Printf("Current callstack (len=%d):\n", len(t.callstack))
+		for i, frame := range t.callstack {
+			fmt.Printf("  [%d] Type=%v, From=%s, To=%v, Gas=%d, GasUsed=%d, StorageChange=%v, SelfStorageChange=%v\n",
+				i, frame.Type, frame.From.Hex(),
+				func() string {
+					if frame.To == nil {
+						return "<nil>"
+					}
+					return frame.To.Hex()
+				}(),
+				frame.Gas, frame.GasUsed, frame.StorageChange, frame.SelfStorageChange)
+		}
 		t.callstack[len(t.callstack)-1].SelfStorageChange = true
 		t.callstack[len(t.callstack)-1].StorageChange = true
 	}
