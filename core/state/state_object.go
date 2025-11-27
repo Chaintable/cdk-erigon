@@ -260,7 +260,6 @@ func (so *stateObject) SetStorage(storage Storage) {
 }
 
 func (so *stateObject) setState(key *libcommon.Hash, value uint256.Int) {
-	fmt.Printf("setState: key=%x, value=%s\n", key, value.Hex())
 	so.dirtyStorage[*key] = value
 }
 

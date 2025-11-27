@@ -708,7 +708,6 @@ func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, add
 				return err
 			}
 		}
-
 		if err := stateObject.updateTrie(stateWriter); err != nil {
 			return err
 		}
@@ -800,9 +799,6 @@ func (sdb *IntraBlockState) MakeWriteSet(chainRules *chain.Rules, stateWriter St
 	}
 	for addr, stateObject := range sdb.stateObjects {
 		_, isDirty := sdb.stateObjectsDirty[addr]
-		// Print debugging logs for MakeWriteSet
-		// Note: Remove or guard with debug flag in prod
-		// addr, stateObjectsDirty, isDirty, stateObject
 		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, stateWriter, addr, stateObject, isDirty, sdb.tracingHooks); err != nil {
 			return err
 		}
