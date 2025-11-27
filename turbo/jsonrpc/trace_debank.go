@@ -82,7 +82,7 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		return nil, err
 	}
 
-	stateReader, err := rpchelper.CreateHistoryStateReader(dbtx, header.Number.Uint64()-1, 0, api.historyV3(dbtx), chainConfig.ChainName)
+	stateReader, err := rpchelper.CreateHistoryStateReader(dbtx, header.Number.Uint64(), 0, api.historyV3(dbtx), chainConfig.ChainName)
 	if err != nil {
 		return nil, err
 	}
