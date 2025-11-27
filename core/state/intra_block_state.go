@@ -687,11 +687,6 @@ func (sdb *IntraBlockState) GetRefund() uint64 {
 
 func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, addr libcommon.Address, stateObject *stateObject, isDirty bool, tracingHooks *tracing.Hooks) error {
 	fmt.Printf("updateAccount called: EIP161Enabled=%v, isAura=%v, addr=%x, isDirty=%v\n", EIP161Enabled, isAura, addr, isDirty)
-	if stateWriter != nil {
-		fmt.Printf("stateWriter: %T\n", stateWriter)
-	} else {
-		fmt.Printf("stateWriter: nil\n")
-	}
 	emptyRemoval := EIP161Enabled && stateObject.empty() && (!isAura || addr != SystemAddress)
 	if stateObject.selfdestructed || (isDirty && emptyRemoval) {
 		fmt.Printf("Deleting account: address=%x, selfdestructed=%v, isDirty=%v, emptyRemoval=%v, balance=%s\n", addr, stateObject.selfdestructed, isDirty, emptyRemoval, stateObject.Balance().String())
@@ -759,7 +754,6 @@ func printAccount(EIP161Enabled bool, addr libcommon.Address, stateObject *state
 
 // FinalizeTx should be called after every transaction.
 func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter StateWriter) error {
-	fmt.Printf("FinalizeTx called, %T\n", stateWriter)
 	for addr, bi := range sdb.balanceInc {
 		if !bi.transferred {
 			sdb.getStateObject(addr)
