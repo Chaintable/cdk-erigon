@@ -273,6 +273,7 @@ func (so *stateObject) updateTrie(stateWriter StateWriter) error {
 		original := so.blockOriginStorage[key]
 		so.originStorage[key] = value
 		if err := stateWriter.WriteAccountStorage(so.address, so.data.GetIncarnation(), &key, &original, &value); err != nil {
+			fmt.Printf("Reached updateTrie: writing account storage for address=%x, key=%x, original=%s, value=%s, error=%v\n", so.address, key, original.String(), value.String(), err)
 			return err
 		}
 	}

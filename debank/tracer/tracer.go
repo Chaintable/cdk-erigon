@@ -107,6 +107,8 @@ func (bs *BlockStorageDiffMap) DeleteAccount(address common.Address, original *a
 }
 
 func (bs *BlockStorageDiffMap) WriteAccountStorage(address common.Address, incarnation uint64, key *common.Hash, original, value *uint256.Int) error {
+	fmt.Printf("WriteAccountStorage called for %s, key=%s, original=%s, value=%s\n",
+		address.Hex(), key.Hex(), original.String(), value.String())
 	addrhash := crypto.Keccak256Hash(address.Bytes())
 	if _, ok := bs.StorageDiff[addrhash]; !ok {
 		bs.StorageDiff[addrhash] = make(map[common.Hash]*uint256.Int)
@@ -114,8 +116,6 @@ func (bs *BlockStorageDiffMap) WriteAccountStorage(address common.Address, incar
 	storageDiff := bs.StorageDiff[addrhash]
 	storageDiff[crypto.Keccak256Hash(key.Bytes())] = value
 	bs.StorageChanges[address] = struct{}{}
-	fmt.Printf("WriteAccountStorage called for %s, key=%s, original=%s, value=%s\n",
-		address.Hex(), key.Hex(), original.String(), value.String())
 	return nil
 }
 

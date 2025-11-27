@@ -687,7 +687,6 @@ func (sdb *IntraBlockState) GetRefund() uint64 {
 
 func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, addr libcommon.Address, stateObject *stateObject, isDirty bool, tracingHooks *tracing.Hooks) error {
 	fmt.Printf("updateAccount called: EIP161Enabled=%v, isAura=%v, addr=%x, isDirty=%v\n", EIP161Enabled, isAura, addr, isDirty)
-	fmt.Printf("stateObject: %+v\n", stateObject)
 	if stateWriter != nil {
 		fmt.Printf("stateWriter: %T\n", stateWriter)
 	} else {
@@ -722,15 +721,18 @@ func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, add
 		}
 		if stateObject.createdContract {
 			if err := stateWriter.CreateContract(addr); err != nil {
-				fmt.Printf("Reached updateAccount: contract created for address=%x\n", addr)
+				fmt.Printf("Reached updateAccount: creating contract for address=%x\n", addr)
 				return err
 			}
 		}
-		fmt.Printf("Reached account update: address=%x, balance=%s, nonce=%d\n", addr, stateObject.Balance().String(), stateObject.Nonce())
+
 		if err := stateObject.updateTrie(stateWriter); err != nil {
+			fmt.Printf("Reached updateTrieError: updating trie for address=%x, error=%v\n", addr, err)
 			return err
 		}
+		fmt.Printf("Reached UpdateAccountData: updating account data for address=%x\n", addr)
 		if err := stateWriter.UpdateAccountData(addr, &stateObject.original, &stateObject.data); err != nil {
+			fmt.Printf("Reached updateAccount: updating account data for address=%x, err=%v\n", addr, err)
 			return err
 		}
 	}
