@@ -64,3 +64,8 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.REVISION }}
           build-args: ACCESS_TOKEN=${{ steps.generate-token.outputs.token }}
           provenance: false
+
+      - name: Lark Notification
+        continue-on-error: true
+        run: |
+          notiv3 "Blockchain client cdk-erigon's image pushed 🎉" ${${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.REVISION }}

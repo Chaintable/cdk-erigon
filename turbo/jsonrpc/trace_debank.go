@@ -152,11 +152,6 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		txBlobGas := txn.GetBlobGas()
 		txChainID := txn.GetChainID()
 
-		msg, msgErr := txn.AsMessage(*types.MakeSigner(chainConfig, header.Number.Uint64(), header.Time), new(big.Int).Set(header.BaseFee), chainConfig.Rules(header.Number.Uint64(), header.Time))
-		if msgErr != nil {
-			log.Error("AsMessage error", "txnHash", txn.Hash(), "err", msgErr)
-		}
-
 		log.Info("txn details",
 			"hash", txn.Hash(),
 			"type", txType,
@@ -169,7 +164,6 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 			"gasPrice", txPrice,
 			"to", txn.GetTo(),
 			"nonce", txn.GetNonce(),
-			"msg", msg,
 		)
 		log.Info("effectiveGasPricePercentage", "value", effectiveGasPricePercentage, "txnPrice", txn.GetPrice())
 		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, writer, header, txn, usedGas, usedBlobGas, vmConfig, effectiveGasPricePercentage)
