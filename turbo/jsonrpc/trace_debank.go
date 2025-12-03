@@ -143,6 +143,7 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		if err != nil {
 			return nil, err
 		}
+		log.Debug("effectiveGasPricePercentage", "value", effectiveGasPricePercentage, "txnPrice", txn.GetPrice())
 		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, writer, header, txn, usedGas, usedBlobGas, vmConfig, effectiveGasPricePercentage)
 		if err != nil {
 			return nil, fmt.Errorf("trace_debankBlock: bn=%d, txnIdx=%d, %w", header.Number.Uint64(), i, err)
