@@ -63,6 +63,8 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	msg.SetEffectiveGasPricePercentage(effectiveGasPricePercentage)
 	msg.SetCheckNonce(!cfg.StatelessExec)
 
+	log.Info("[applyTransaction] EVM ChainRules", "chainRules", rules)
+	log.Info("[applyTransaction] EVM ChainConfig", "chainConfig", config.String())
 	// apply effective gas percentage here, so it is actual for all further calculations
 	if evm.ChainRules().IsForkID5Dragonfruit {
 		originalGasPrice := msg.GasPrice()
