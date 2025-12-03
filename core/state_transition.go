@@ -23,6 +23,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/txpool/txpoolcfg"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
+	"github.com/ledgerwatch/log/v3"
 
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
@@ -364,6 +365,9 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	coinbase := st.evm.Context.Coinbase
 
+	balance := st.state.GetBalance(coinbase)
+	log.Info("[TransitionDb] Coinbase Balance before transition", "coinbase", coinbase.Hex(), "balance", balance.String())
+
 	var input1 *uint256.Int
 	var input2 *uint256.Int
 	if st.isBor {
@@ -382,9 +386,13 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 	// 6. caller has enough balance to cover asset transfer for **topmost** call
 
 	// Check clauses 1-3 and 6, buy gas if everything is correct
+	balance = st.state.GetBalance(st.msg.From())
+	log.Info("[TransitionDb] Balance before preCheck", "from", st.msg.From().Hex(), "balance", balance.String())
 	if err := st.preCheck(gasBailout); err != nil {
 		return nil, err
 	}
+	balance = st.state.GetBalance(st.msg.From())
+	log.Info("[TransitionDb] Balance after preCheck", "from", st.msg.From().Hex(), "balance", balance.String())
 	if st.evm.Config().Debug {
 		st.evm.Config().Tracer.CaptureTxStart(st.initialGas)
 		defer func() {
@@ -446,6 +454,10 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), st.data, st.gasRemaining, st.value, bailout, intrinsicGas)
 	}
+
+	balance = st.state.GetBalance(st.msg.From())
+	log.Info("[TransitionDb] Balance after call", "from", st.msg.From().Hex(), "balance", balance.String())
+
 	if refunds {
 		if rules.IsLondon {
 			// After EIP-3529: refunds are capped to gasUsed / 5
@@ -455,6 +467,9 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 			st.refundGas(params.RefundQuotient)
 		}
 	}
+
+	balance = st.state.GetBalance(st.msg.From())
+	log.Info("[TransitionDb] Balance after refundGas", "from", st.msg.From().Hex(), "balance", balance.String())
 
 	effectiveTip := st.gasPrice
 
@@ -468,6 +483,10 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 	amount := new(uint256.Int).SetUint64(st.gasUsed())
 	amount.Mul(amount, effectiveTip) // gasUsed * effectiveTip = how much goes to the block producer (miner, validator)
 	st.state.AddBalance(coinbase, amount)
+
+	balance = st.state.GetBalance(coinbase)
+	log.Info("[TransitionDb] Coinbase Balance after transition", "coinbase", coinbase.Hex(), "balance", balance.String())
+
 	if !msg.IsFree() && rules.IsLondon {
 		burntContractAddress := st.evm.ChainConfig().GetBurntContract(st.evm.Context.BlockNumber)
 		if burntContractAddress != nil {
