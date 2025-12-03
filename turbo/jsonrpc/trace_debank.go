@@ -143,7 +143,35 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		if err != nil {
 			return nil, err
 		}
-		log.Debug("effectiveGasPricePercentage", "value", effectiveGasPricePercentage, "txnPrice", txn.GetPrice())
+		// Log details of the transaction for debugging
+		txType := txn.Type()
+		txPrice := txn.GetPrice()
+		txTip := txn.GetTip()
+		txFeeCap := txn.GetFeeCap()
+		txGas := txn.GetGas()
+		txBlobGas := txn.GetBlobGas()
+		txChainID := txn.GetChainID()
+
+		msg, msgErr := txn.AsMessage(*types.MakeSigner(chainConfig, header.Number.Uint64(), header.Time), new(big.Int).Set(header.BaseFee), chainConfig.Rules(header.Number.Uint64(), header.Time))
+		if msgErr != nil {
+			log.Error("AsMessage error", "txnHash", txn.Hash(), "err", msgErr)
+		}
+
+		log.Info("txn details",
+			"hash", txn.Hash(),
+			"type", txType,
+			"price", txPrice,
+			"tip", txTip,
+			"feeCap", txFeeCap,
+			"gas", txGas,
+			"blobGas", txBlobGas,
+			"chainID", txChainID,
+			"gasPrice", txPrice,
+			"to", txn.GetTo(),
+			"nonce", txn.GetNonce(),
+			"msg", msg,
+		)
+		log.Info("effectiveGasPricePercentage", "value", effectiveGasPricePercentage, "txnPrice", txn.GetPrice())
 		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, writer, header, txn, usedGas, usedBlobGas, vmConfig, effectiveGasPricePercentage)
 		if err != nil {
 			return nil, fmt.Errorf("trace_debankBlock: bn=%d, txnIdx=%d, %w", header.Number.Uint64(), i, err)
