@@ -68,4 +68,4 @@ jobs:
       - name: Lark Notification
         continue-on-error: true
         run: |
-          notiv3 "Blockchain client cdk-erigon's image pushed 🎉" ${${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.REVISION }}
+          notiv3 "Blockchain client cdk-erigon's image pushed 🎉" ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.REVISION }}
