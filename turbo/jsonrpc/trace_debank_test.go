@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/common"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon/common"
+	"github.com/ledgerwatch/erigon/crypto"
 	dtypes "github.com/ledgerwatch/erigon/debank/types"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/stretchr/testify/assert"
@@ -54,10 +56,10 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 			name: "Empty BlockStorageDiff",
 			setupFunc: func() *dtypes.BlockStorageDiff {
 				return &dtypes.BlockStorageDiff{
-					Hash:            common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					ParentHash:      common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+					Hash:            libcommon.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					ParentHash:      libcommon.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					NewAccounts:     []dtypes.NewAccount{},
-					DeletedAccounts: []common.Hash{},
+					DeletedAccounts: []libcommon.Hash{},
 					StorageDiff:     []dtypes.AccountStorageDiff{},
 					NewCodes:        []dtypes.NewCode{},
 				}
@@ -68,23 +70,23 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 			name: "BlockStorageDiff with new accounts",
 			setupFunc: func() *dtypes.BlockStorageDiff {
 				return &dtypes.BlockStorageDiff{
-					Hash:       common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					ParentHash: common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+					Hash:       libcommon.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					ParentHash: libcommon.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					NewAccounts: []dtypes.NewAccount{
 						{
-							Address:  common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+							Address:  libcommon.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 							Balance:  uint256.NewInt(1000000000000000000),
 							Nonce:    1,
-							CodeHash: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+							CodeHash: libcommon.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
 						},
 						{
-							Address:  common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+							Address:  libcommon.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
 							Balance:  uint256.NewInt(5000000000000000000),
 							Nonce:    42,
-							CodeHash: common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
+							CodeHash: libcommon.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
 						},
 					},
-					DeletedAccounts: []common.Hash{},
+					DeletedAccounts: []libcommon.Hash{},
 					StorageDiff:     []dtypes.AccountStorageDiff{},
 					NewCodes:        []dtypes.NewCode{},
 				}
@@ -95,12 +97,12 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 			name: "BlockStorageDiff with deleted accounts",
 			setupFunc: func() *dtypes.BlockStorageDiff {
 				return &dtypes.BlockStorageDiff{
-					Hash:        common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					ParentHash:  common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+					Hash:        libcommon.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					ParentHash:  libcommon.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					NewAccounts: []dtypes.NewAccount{},
-					DeletedAccounts: []common.Hash{
-						common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
-						common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+					DeletedAccounts: []libcommon.Hash{
+						libcommon.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
+						libcommon.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
 					},
 					StorageDiff: []dtypes.AccountStorageDiff{},
 					NewCodes:    []dtypes.NewCode{},
@@ -112,20 +114,20 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 			name: "BlockStorageDiff with storage diff",
 			setupFunc: func() *dtypes.BlockStorageDiff {
 				return &dtypes.BlockStorageDiff{
-					Hash:            common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					ParentHash:      common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+					Hash:            libcommon.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					ParentHash:      libcommon.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					NewAccounts:     []dtypes.NewAccount{},
-					DeletedAccounts: []common.Hash{},
+					DeletedAccounts: []libcommon.Hash{},
 					StorageDiff: []dtypes.AccountStorageDiff{
 						{
-							Address: common.HexToHash("0x7777777777777777777777777777777777777777777777777777777777777777"),
+							Address: libcommon.HexToHash("0x7777777777777777777777777777777777777777777777777777777777777777"),
 							Values: []dtypes.IndexValuePair{
 								{
-									Index: common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+									Index: libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
 									Value: uint256.NewInt(100),
 								},
 								{
-									Index: common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000001"),
+									Index: libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000001"),
 									Value: uint256.NewInt(200),
 								},
 							},
@@ -140,18 +142,18 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 			name: "BlockStorageDiff with new codes",
 			setupFunc: func() *dtypes.BlockStorageDiff {
 				return &dtypes.BlockStorageDiff{
-					Hash:            common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					ParentHash:      common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+					Hash:            libcommon.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					ParentHash:      libcommon.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					NewAccounts:     []dtypes.NewAccount{},
-					DeletedAccounts: []common.Hash{},
+					DeletedAccounts: []libcommon.Hash{},
 					StorageDiff:     []dtypes.AccountStorageDiff{},
 					NewCodes: []dtypes.NewCode{
 						{
-							CodeHash: common.HexToHash("0x8888888888888888888888888888888888888888888888888888888888888888"),
+							CodeHash: libcommon.HexToHash("0x8888888888888888888888888888888888888888888888888888888888888888"),
 							Code:     []byte{0x60, 0x60, 0x60, 0x40, 0x52}, // Simple EVM bytecode
 						},
 						{
-							CodeHash: common.HexToHash("0x9999999999999999999999999999999999999999999999999999999999999999"),
+							CodeHash: libcommon.HexToHash("0x9999999999999999999999999999999999999999999999999999999999999999"),
 							Code:     []byte{0x60, 0x80, 0x60, 0x40, 0x52, 0x60, 0x04, 0x36, 0x10},
 						},
 					},
@@ -163,25 +165,25 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 			name: "Complete BlockStorageDiff",
 			setupFunc: func() *dtypes.BlockStorageDiff {
 				return &dtypes.BlockStorageDiff{
-					Hash:       common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					ParentHash: common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+					Hash:       libcommon.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					ParentHash: libcommon.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
 					NewAccounts: []dtypes.NewAccount{
 						{
-							Address:  common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+							Address:  libcommon.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 							Balance:  uint256.NewInt(1000),
 							Nonce:    1,
-							CodeHash: common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+							CodeHash: libcommon.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
 						},
 					},
-					DeletedAccounts: []common.Hash{
-						common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+					DeletedAccounts: []libcommon.Hash{
+						libcommon.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
 					},
 					StorageDiff: []dtypes.AccountStorageDiff{
 						{
-							Address: common.HexToHash("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+							Address: libcommon.HexToHash("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
 							Values: []dtypes.IndexValuePair{
 								{
-									Index: common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+									Index: libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
 									Value: uint256.NewInt(123),
 								},
 							},
@@ -189,7 +191,7 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 					},
 					NewCodes: []dtypes.NewCode{
 						{
-							CodeHash: common.HexToHash("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+							CodeHash: libcommon.HexToHash("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
 							Code:     []byte{0x60, 0x60, 0x60, 0x40},
 						},
 					},
@@ -264,7 +266,8 @@ func TestRLPDecodeStateDiff(t *testing.T) {
 func TestRLPDecodeFromHexString(t *testing.T) {
 	// Decode from hex string
 	//	decodedBytes, err := hex.DecodeString("f908e7a097211b3218d879b7df494708c13d235b302c82b03e19d6cdaf78aeb5159018e3a0772c2069ab002b4806b95464d0982f414edb742e9343231bc005215cce1c3c09f90424f84da0cb4bca215b16cc37717ce1b11bcd3c10a85f05b3a785e1c61ac7c2391150e8a28702bdfdc9c326aa8202fda0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da001d16c01ea71b45b37571400827173660ecf98a115e855f03acff516e2304583890504b21d67475b158f37a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da01231b53050ebd959cf10f184eb5be8e96ab4fe5456404b39d54b32d0d94be98a870227bcdbc7b604820244a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da06c26c5a43fb3e6135b2ac2451d9744dfa76caa7fe487174918af973b8bb7f5728702dc0d7349444a8203e5a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f844a06296d0fff89ae28e6bf2e276e49ffbefdf5498ba85eefd3d0262b3e2c16e98828001a0a65d77509775d24254b9a954e719c720f95b17c2ec814954a73efa7d6669a8b4f844a01f9556cc544722d000bed98885b914e74b593886b7e90984dfecb4d57b8276ef8001a0390727ffb70aeee189a4943ab077e83bcef160f49e26983e2a18c2440d7b6f29f84da08cb67b5690ad1269ecfe2d643b9a205bf13984371364689ca4e10c747ecaa4a187031753ce6df24a820458a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da069aa620b99d1419cb94fb3445f89d7549a5749ece5342e3bee0f2b04707b52bc87036d2d31076754820457a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da09f3b4d302399317037ca25cc86dda87711ef08ca76ecfb0bd2f7006f6801673b8702fbd980406afc8203e3a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84ca0b18f62bdad8a1e48bd43cf1498e3f0c84355cf8a050c209548e3ee566ffdf358870132313534605e81c1a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f844a0f3bef18d515599b42f7842e5444eb28459d71d0cc5eecb8ff5b02e26e487cafc8001a0d8108e3c7046fa0081c631f7377b2246fa67dcfff1502651c9231e264be0f543f844a01c9bd47f0c2a4bfa5be0eb5b6502e03ab57e56829cf399dc587db53bd74c3f988001a09c97382df2508a5b995a0e98735c37e86d340f04c79a52b51df2a54a9f3abe9ff84da03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd323048905b45839c0a334de5901a02e99356edc1ecb11bab4e109e1af117bbf1c2c9afb7269271ef82b4605624e15f844a02d79c1eb9bae69b3cfc25d3698c6723a648bb832f5f3bf6c26578174100d51e18001a09ed810de3bd42dc57abfda91f306d385ffcc413844f42a020beb453f9f38fcc0e1a01468288056310c82aa4c01a7e12a10f8111a0560e72b700555479031b86c357df90458f875a03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd32304f852e8a05367677107f0505efa001b4f1c18a6702ec077b02c22f4dacb659553fce1c1758607db3c25891fe8a019b57aaf98a8a6ebdc0029baa5eade4428db7457529f01fe12c38b9b478025d1860bb3e31f423ff845a06296d0fff89ae28e6bf2e276e49ffbefdf5498ba85eefd3d0262b3e2c16e9882e3e2a0fd7c78779b28abb18ba08727f89aa3c9628b4aa32a518747339bbedd0bfc5f8a01f90184a0f3bef18d515599b42f7842e5444eb28459d71d0cc5eecb8ff5b02e26e487cafcf90160f842a0290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563a0ffffffffffffffffffffffffffff8c4affffffffffffffffffffffffffff84ddf6a0cdc5dfb80ca632cf1b12a74e40fbe084caea7802e2c603bd67833c7b6a23de60947ec2dd7025bcc5ee5723631e44494979e4ff7483e2a08e9e2a56b03e133cc59916bcff40bb4ce8a2ffbfe5f9a1e69798f80340dcd43b01f842a0e4d2973fbcbca746afad7b2ae18b83a33c0a1b79ff57b4737b0c7e476bfb122ca08000000000000000000000000000000000000000000000000000000000002639eda028022f4c57213cb2dfce0a29517939f3cff1af5b81e113a423d4ec1de4dcbf508b126e6ea63ee9d10c265b6aeca01b930a9eb80b970c7f694bc034f0dc00ab51d9090d697518627fc63fb38f70fb8a03310023da6b781c0000e2a0ebd717d3f513131176e200109e7ecf987457f7be07fbedf62d897eb23c9b042e80f90105a01c9bd47f0c2a4bfa5be0eb5b6502e03ab57e56829cf399dc587db53bd74c3f98f8e2f83da0385fa9e34e3c7929b17e26aa6abd26a6ac3af5aa208b384138c0ff8bb3d29d7d9b04936423f9ee426b196d4100000000033b5dfc7a40c3662d033b97f83da0520e6d5cbfab4c9cf36997deadf36be83ee557da36dd70a92fbb6797fc6a9ae49b1ad9b6dd6a1add36f645b800000000033d05d4b287a8f2bc3ea58fe9a01d2cdde56e0f620405fa9b05d630d12c9816e5ca4e8368d4765138a4e51ae45d877fbe94a71a5dcef838a0b9e43a8e56b3bf745f3ad07fe401c498fc8192967592300e42f2c69150de9c1e9604006699324b0000000000760e96a3ed8897eb45fd9bf878a02d79c1eb9bae69b3cfc25d3698c6723a648bb832f5f3bf6c26578174100d51e1f855e8a0614c016d8ff8c9728b74fa739d2db038acb347e364ff0270e3bc8d4c10e5ce0f860aadd3db8900eba00af344fb7cf3c57cf5c9c5e51b5e574f14485d838747922079b5db8d01e4940b891d38193021bf9c796cf88fa01f9556cc544722d000bed98885b914e74b593886b7e90984dfecb4d57b8276eff86cf83ea085d4eda3838b078c292ad33e6ede373c4123530557ce65b7da6591257189dc099c033b5dfc7a40c3662d033b970000000000000000000007a1eb4f2f80eba04a11f94e20a93c79f6ec743a1954ec4fc2c08429ae2122118bf234b2185c81b889269c689bf714a011fac0")
-	decodedBytes, err := hex.DecodeString("f90387a08b5e3998eaa4a0cee40e3d144f0557ef4c1a9e825264f8ab0da136d2ec871fd7a097211b3218d879b7df494708c13d235b302c82b03e19d6cdaf78aeb5159018e3f902c7f84da07d1d2e8a1d311ce69d0b6349f7dc27a6b6afd6edf66ba70279e7e7a37bacbb258702beea8903538e8202faa0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd323048905b45839c0a334de5901a02e99356edc1ecb11bab4e109e1af117bbf1c2c9afb7269271ef82b4605624e15f84da022d2caaf91573555a396b86aa58ed4abcdf3e60695c19c2ece045fabbf5483308701c1e9b76a390282041ba0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0257ef01d8c6a594ed4d55ed130abae71b3f419848740b7d9c74f3ef58f934ac58702e4146b1ca05a820483a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0005595dbf9bb72c574d027f9c89c79d5162eb93c6b009f465b98f9fc22b196d98702fc231bc7c5b282041fa0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0084970242c20cb50cac401697768bbde1a7cec61ba8accf925b7b8e1ed523dcb87031eaa8b1b010a820405a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da01490bee8d84175b521ae47b15dc63157194e56f31a550a5ef3eb7dc8e9a4e0248703ad3365b92b22820466a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da001d16c01ea71b45b37571400827173660ecf98a115e855f03acff516e2304583890504b234106de02ca737a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0719ec4dec2a55d353b395449933172aa2ad3217377dd3e40c1feb835b0bc00ed8702bca12039a56482048fa0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470c0f877f875a03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd32304f852e8a08c0c8be1d83880851341d17f7ae35b2c1d14e4a04e14fd3fa30ced47b4e242558607a9043be6ffe8a0cbeb7d5fd55b57eb0d52412e06d704e57ef8b799c3afee90eebed161961418868604d0feb2ec47c0")
+	//decodedBytes, err := hex.DecodeString("f90387a08b5e3998eaa4a0cee40e3d144f0557ef4c1a9e825264f8ab0da136d2ec871fd7a097211b3218d879b7df494708c13d235b302c82b03e19d6cdaf78aeb5159018e3f902c7f84da07d1d2e8a1d311ce69d0b6349f7dc27a6b6afd6edf66ba70279e7e7a37bacbb258702beea8903538e8202faa0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd323048905b45839c0a334de5901a02e99356edc1ecb11bab4e109e1af117bbf1c2c9afb7269271ef82b4605624e15f84da022d2caaf91573555a396b86aa58ed4abcdf3e60695c19c2ece045fabbf5483308701c1e9b76a390282041ba0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0257ef01d8c6a594ed4d55ed130abae71b3f419848740b7d9c74f3ef58f934ac58702e4146b1ca05a820483a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0005595dbf9bb72c574d027f9c89c79d5162eb93c6b009f465b98f9fc22b196d98702fc231bc7c5b282041fa0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0084970242c20cb50cac401697768bbde1a7cec61ba8accf925b7b8e1ed523dcb87031eaa8b1b010a820405a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da01490bee8d84175b521ae47b15dc63157194e56f31a550a5ef3eb7dc8e9a4e0248703ad3365b92b22820466a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da001d16c01ea71b45b37571400827173660ecf98a115e855f03acff516e2304583890504b234106de02ca737a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da0719ec4dec2a55d353b395449933172aa2ad3217377dd3e40c1feb835b0bc00ed8702bca12039a56482048fa0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470c0f877f875a03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd32304f852e8a08c0c8be1d83880851341d17f7ae35b2c1d14e4a04e14fd3fa30ced47b4e242558607a9043be6ffe8a0cbeb7d5fd55b57eb0d52412e06d704e57ef8b799c3afee90eebed161961418868604d0feb2ec47c0")
+	decodedBytes, err := hex.DecodeString("f902baa00eb90722c2a5ae49af663237874b40075515fa665ed2d33569f68cfd5f47784da0cc09c6fc5d31bde5362c65214d7b4d6dd06a42db1a4a68b2eb72fac88874a162f9017ff84ca09e400273d5330504254fcecb16524749195af37a156f086a835489250d630900860e6ec02f5aa7825076a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84da03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd3230489015463fd893daff8a001a02e99356edc1ecb11bab4e109e1af117bbf1c2c9afb7269271ef82b4605624e15f84ca001d16c01ea71b45b37571400827173660ecf98a115e855f03acff516e230458388118daa08095ae0e36ca0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f84ca04bcdef39a18c2f218daa7803a5a789b6cc68ed6e4630f476a9ccf8c5a96ce7a58671ea892e966d825e70a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470f844a0cbac4d789d00b9d0aba323012585e202e66d343f9e7291c304a716d820c29b0a8001a054dd131dbc6d30b91875970f8b159567e0cbd4cd27250be69f346d9a14e85250c0f8f2f875a03c62c250b60ff4763cc7b6904f3dbb4b22dea9f7ccc9ee45e7a5be6afdd32304f852e8a0bb4a0ed4c29d00898236941663782c716a249cdf9b4a2a35d820e5fec7590457860612ebc1d3a9e8a08cb7d45b4cee9d942f3e04b15b8d6503a95171447a3e856ba7f958b05b784fc68604fe93386a45f879a0cbac4d789d00b9d0aba323012585e202e66d343f9e7291c304a716d820c29b0af856eaa00c5afac4e08d13992f98a2e4ac5d1b44c9ad91ba54a2cd28303382f803617238881bcd66afeea6d793eaa03f6b8a52dd8779f0d357c3b78c532cfccc7b73c033c455fa2a3d615a971a0deb881c14a692aebf91bac0")
 	require.NoError(t, err)
 
 	var decoded dtypes.BlockStorageDiff
@@ -681,4 +684,124 @@ func makeRPCRequest(rpcURL string, payload interface{}) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+// TestAddressKeccak256Hash tests computing keccak256 hash of Ethereum addresses
+func TestAddressKeccak256Hash(t *testing.T) {
+	testCases := []struct {
+		name        string
+		address     string
+		description string
+	}{
+		{
+			name:        "Zero Address",
+			address:     "0x0000000000000000000000000000000000000000",
+			description: "Hash of the zero address",
+		},
+		{
+			name:        "Sample Address 1",
+			address:     "0x92367037e551e0894c3dd8a7a63aa41cfb3db0a8",
+			description: "Top holder from the provided JSON",
+		},
+		{
+			name:        "Sample Address 2",
+			address:     "0x28ad6b7dfd79153659cb44c2155cf7c0e1ceeccc",
+			description: "Second holder from the provided JSON",
+		},
+		{
+			name:        "Contract Address",
+			address:     "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+			description: "ERC-4337 EntryPoint contract",
+		},
+		{
+			name:        "All Fs Address",
+			address:     "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+			description: "Address with all Fs (mixed case)",
+		},
+	}
+
+	t.Log("\n=== Keccak256 Hash of Ethereum Addresses ===\n")
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Parse the address
+			addr := libcommon.HexToAddress(tc.address)
+
+			// Method 1: Hash the address bytes directly
+			addressBytes := addr.Bytes()
+			hash1 := crypto.Keccak256Hash(addressBytes)
+
+			// Method 2: Hash the hex string (without 0x prefix)
+			addressHex := addr.Hex()[2:] // Remove '0x' prefix
+			hash2Bytes := crypto.Keccak256([]byte(addressHex))
+			hash2 := libcommon.BytesToHash(hash2Bytes)
+
+			// Method 3: Hash the full address bytes (20 bytes)
+			hash3 := crypto.Keccak256Hash(addr[:])
+
+			// Log results
+			t.Logf("\n--- %s ---", tc.name)
+			t.Logf("Description:    %s", tc.description)
+			t.Logf("Address:        %s", addr.Hex())
+			t.Logf("Address Bytes:  %s", hex.EncodeToString(addressBytes))
+			t.Logf("")
+			t.Logf("Keccak256 Hash Methods:")
+			t.Logf("  Method 1 (bytes):      %s", hash1.Hex())
+			t.Logf("  Method 2 (hex string): %s", hash2.Hex())
+			t.Logf("  Method 3 (array):      %s", hash3.Hex())
+			t.Logf("")
+
+			// Verify that methods 1 and 3 produce the same result
+			assert.Equal(t, hash1, hash3, "Hash methods should produce the same result for address bytes")
+		})
+	}
+
+	// Additional test: Hash multiple addresses and show results in a table
+	t.Log("\n=== Batch Keccak256 Hash Results ===\n")
+	addresses := []string{
+		"0x92367037e551e0894c3dd8a7a63aa41cfb3db0a8",
+		"0x28ad6b7dfd79153659cb44c2155cf7c0e1ceeccc",
+		"0x78f813aa474167627acf0a0005f523e0e6d561d0",
+		"0xf6d226f9dc15d9bb51182815b320d3fbe324e1ba",
+		"0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+	}
+
+	t.Logf("%-45s | %s", "Address", "Keccak256 Hash")
+	t.Logf("%s", strings.Repeat("-", 112))
+
+	for _, addrStr := range addresses {
+		addr := libcommon.HexToAddress(addrStr)
+		hash := crypto.Keccak256Hash(addr.Bytes())
+		t.Logf("%-45s | %s", addr.Hex(), hash.Hex())
+	}
+	t.Logf("")
+}
+
+// TestKeccak256WithStorageKeys tests keccak256 hashing for storage slot calculations
+func TestKeccak256WithStorageKeys(t *testing.T) {
+	// Example: Calculate storage slot for mapping(address => uint256) at slot 0
+	address := libcommon.HexToAddress("0x92367037e551e0894c3dd8a7a63aa41cfb3db0a8")
+	storageSlot := libcommon.Hash{} // slot 0
+
+	// Concatenate address (32 bytes, left-padded) and slot (32 bytes)
+	var data []byte
+	// Address needs to be 32 bytes (left-padded with zeros)
+	paddedAddr := common.LeftPadBytes(address.Bytes(), 32)
+	data = append(data, paddedAddr...)
+	data = append(data, storageSlot.Bytes()...)
+
+	// Calculate the storage key
+	storageKey := crypto.Keccak256Hash(data)
+
+	t.Logf("\n=== Storage Slot Calculation Example ===")
+	t.Logf("Mapping Type:      mapping(address => uint256)")
+	t.Logf("Mapping Slot:      %d", 0)
+	t.Logf("Address:           %s", address.Hex())
+	t.Logf("Padded Address:    0x%s", hex.EncodeToString(paddedAddr))
+	t.Logf("Storage Slot:      %s", storageSlot.Hex())
+	t.Logf("Concatenated Data: 0x%s", hex.EncodeToString(data))
+	t.Logf("Storage Key:       %s", storageKey.Hex())
+	t.Logf("")
+	t.Logf("This storage key can be used to query the value at:")
+	t.Logf("  mapping[%s] in storage slot 0", address.Hex())
 }
