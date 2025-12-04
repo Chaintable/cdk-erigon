@@ -537,7 +537,7 @@ type DebankOutPutJs struct {
 
 func (api *TraceAPIImpl) DebankBlock(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (*DebankOutPutJs, error) {
 	start := time.Now()
-	output, err := api.DebankBlockRaw(ctx, blockNrOrHash)
+	output, err := api.DebankBlockRaw2(ctx, blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
