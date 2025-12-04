@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ledgerwatch/erigon-lib/common"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/metrics"
 	"github.com/ledgerwatch/erigon/consensus"
@@ -170,6 +171,8 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		if err != nil {
 			return nil, fmt.Errorf("trace_debankBlock: bn=%d, txnIdx=%d, %w", header.Number.Uint64(), i, err)
 		}
+		balance := ibs.GetBalance(libcommon.HexToAddress("0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D"))
+		fmt.Printf("[DebankBlockRaw] Balance in DebankBlockRaw, from: %v, balance: %v, balance Hex: %v\n", "0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D", balance.String(), balance.Hex())
 		// Collect ChangeContracts from this tracer
 		for addr := range tracer.ChangeContracts {
 			changeContractsMap[addr] = struct{}{}

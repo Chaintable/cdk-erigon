@@ -17,6 +17,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/log/v3"
@@ -123,6 +125,9 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	if usedBlobGas != nil {
 		*usedBlobGas += tx.GetBlobGas()
 	}
+
+	balance := ibs.GetBalance(libcommon.HexToAddress("0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D"))
+	fmt.Printf("[applyTransaction] Balance in applyTransaction, from: %v, balance: %v, balance Hex: %v\n", "0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D", balance.String(), balance.Hex())
 
 	// Set the receipt logs and create the bloom filter.
 	// based on the eip phase, we're passing whether the root touch-delete accounts.
