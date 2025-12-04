@@ -38,7 +38,6 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	if err != nil {
 		return nil, nil, err
 	}
-
 	msg.SetEffectiveGasPricePercentage(effectiveGasPricePercentage)
 	msg.SetCheckNonce(!cfg.StatelessExec)
 
