@@ -744,17 +744,6 @@ func printAccount(EIP161Enabled bool, addr libcommon.Address, stateObject *state
 // FinalizeTx should be called after every transaction.
 func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter StateWriter) error {
 
-	balance := sdb.GetBalance(libcommon.HexToAddress("0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D"))
-	fmt.Printf("[FinalizeTx] Balance in FinalizeTx, from: %v, balance: %v, balance Hex: %v\n", "0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D", balance.String(), balance.Hex())
-
-	addrToCheck := libcommon.HexToAddress("0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D")
-	if _, ok := sdb.journal.dirties[addrToCheck]; ok {
-		fmt.Printf("[FinalizeTx-debug] sdb.journal.dirties contains %v, value: %v\n", addrToCheck.Hex(), sdb.journal.dirties[addrToCheck])
-	}
-	if val, ok := sdb.stateObjects[addrToCheck]; ok {
-		fmt.Printf("[FinalizeTx-debug] sdb.stateObjects[%v] data.Balance: %v, original.Balance: %v\n", addrToCheck.Hex(), val.data.Balance.String(), val.original.Balance.String())
-	}
-
 	for addr, bi := range sdb.balanceInc {
 		if !bi.transferred {
 			sdb.getStateObject(addr)

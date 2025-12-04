@@ -17,11 +17,8 @@
 package core
 
 import (
-	"fmt"
-
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
-	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -36,46 +33,18 @@ import (
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
 func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64, evm *vm.EVM, cfg vm.Config, effectiveGasPricePercentage uint8) (*types.Receipt, []byte, error) {
-	log.Info("[applyTransaction] Starting transaction application",
-		"txHash", tx.Hash().Hex(),
-		"blockNumber", header.Number.Uint64(),
-		"effectiveGasPricePercentage", effectiveGasPricePercentage)
-
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64(), header.Time), header.BaseFee, rules)
 	if err != nil {
-		log.Info("[applyTransaction] Failed to convert tx to message", "txHash", tx.Hash().Hex(), "error", err)
 		return nil, nil, err
 	}
 
-	log.Info("[applyTransaction] Transaction details",
-		"txHash", tx.Hash().Hex(),
-		"from", msg.From().Hex(),
-		"to", func() string {
-			if msg.To() != nil {
-				return msg.To().Hex()
-			}
-			return "contract_creation"
-		}(),
-		"value", msg.Value().String(),
-		"gas", msg.Gas(),
-		"gasPrice", msg.GasPrice().String(),
-		"feeCap", msg.FeeCap().String(),
-		"nonce", tx.GetNonce())
 	msg.SetEffectiveGasPricePercentage(effectiveGasPricePercentage)
 	msg.SetCheckNonce(!cfg.StatelessExec)
 
-	log.Info("[applyTransaction] EVM ChainRules", "chainRules", rules)
-	log.Info("[applyTransaction] EVM ChainConfig", "chainConfig", config.String())
 	// apply effective gas percentage here, so it is actual for all further calculations
 	if evm.ChainRules().IsForkID5Dragonfruit {
-		originalGasPrice := msg.GasPrice()
 		msg.SetGasPrice(CalculateEffectiveGas(msg.GasPrice(), effectiveGasPricePercentage))
-		log.Info("[applyTransaction] Applied effective gas price",
-			"txHash", tx.Hash().Hex(),
-			"originalGasPrice", originalGasPrice.String(),
-			"effectiveGasPrice", msg.GasPrice().String(),
-			"percentage", effectiveGasPricePercentage)
 	}
 
 	if msg.FeeCap().IsZero() && engine != nil {
@@ -83,13 +52,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		syscall := func(contract libcommon.Address, data []byte) ([]byte, error) {
 			return SysCallContract(contract, data, config, ibs, header, engine, true /* constCall */)
 		}
-		isFree := engine.IsServiceTransaction(msg.From(), syscall)
-		msg.SetIsFree(isFree)
-		if isFree {
-			log.Info("[applyTransaction] Service transaction detected",
-				"txHash", tx.Hash().Hex(),
-				"from", msg.From().Hex())
-		}
+		msg.SetIsFree(engine.IsServiceTransaction(msg.From(), syscall))
 	}
 
 	txContext := NewEVMTxContext(msg)
@@ -102,32 +65,17 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 
 	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 	if err != nil {
-		log.Info("[applyTransaction] Transaction execution failed",
-			"txHash", tx.Hash().Hex(),
-			"error", err)
 		return nil, nil, err
 	}
 
-	log.Info("[applyTransaction] Transaction execution completed",
-		"txHash", tx.Hash().Hex(),
-		"failed", result.Failed(),
-		"gasUsed", result.UsedGas,
-		"returnDataLen", len(result.ReturnData))
-
 	// Update the state with pending changes
 	if err = ibs.FinalizeTx(rules, stateWriter); err != nil {
-		log.Info("[applyTransaction] Failed to finalize transaction",
-			"txHash", tx.Hash().Hex(),
-			"error", err)
 		return nil, nil, err
 	}
 	*usedGas += result.UsedGas
 	if usedBlobGas != nil {
 		*usedBlobGas += tx.GetBlobGas()
 	}
-
-	balance := ibs.GetBalance(libcommon.HexToAddress("0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D"))
-	fmt.Printf("[applyTransaction] Balance in applyTransaction, from: %v, balance: %v, balance Hex: %v\n", "0x687BEdBC8176e5E0A2d3A625ecf37a52f860968D", balance.String(), balance.Hex())
 
 	// Set the receipt logs and create the bloom filter.
 	// based on the eip phase, we're passing whether the root touch-delete accounts.
@@ -155,24 +103,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())
-
-		log.Info("[applyTransaction] Receipt created",
-			"txHash", tx.Hash().Hex(),
-			"status", receipt.Status,
-			"gasUsed", receipt.GasUsed,
-			"cumulativeGasUsed", receipt.CumulativeGasUsed,
-			"contractAddress", func() string {
-				if receipt.ContractAddress != (libcommon.Address{}) {
-					return receipt.ContractAddress.Hex()
-				}
-				return "none"
-			}(),
-			"logs", len(receipt.Logs))
 	}
-
-	log.Info("[applyTransaction] Transaction application completed successfully",
-		"txHash", tx.Hash().Hex(),
-		"totalGasUsed", *usedGas)
 
 	return receipt, result.ReturnData, err
 }
