@@ -134,7 +134,7 @@ type BorConfig interface {
 func (c *Config) String() string {
 	engine := c.getEngine()
 
-	return fmt.Sprintf("{ChainID: %v, Homestead: %v, DAO: %v, Tangerine Whistle: %v, Spurious Dragon: %v, Byzantium: %v, Constantinople: %v, Petersburg: %v, Istanbul: %v, Muir Glacier: %v, Berlin: %v, London: %v, Arrow Glacier: %v, Gray Glacier: %v, Terminal Total Difficulty: %v, Merge Netsplit: %v, Shanghai: %v, Cancun: %v, Prague: %v, Osaka: %v, Normalcy: %v, Engine: %v, NoPruneContracts: %v}",
+	return fmt.Sprintf("{ChainID: %v, Homestead: %v, DAO: %v, Tangerine Whistle: %v, Spurious Dragon: %v, Byzantium: %v, Constantinople: %v, Petersburg: %v, Istanbul: %v, Muir Glacier: %v, Berlin: %v, London: %v, Arrow Glacier: %v, Gray Glacier: %v, Terminal Total Difficulty: %v, Merge Netsplit: %v, Shanghai: %v, Cancun: %v, Prague: %v, Osaka: %v, Normalcy: %v, Engine: %v, NoPruneContracts: %v, ForkID4: %v, ForkID5Dragonfruit: %v, ForkID6IncaBerry: %v, ForkID7Etrog: %v, ForkID8Elderberry: %v, ForkID9Elderberry2: %v, ForkID10: %v, ForkID11: %v, ForkID12Banana: %v, ForkID13Durian: %v, AllowFreeTransactions: %v, ZkDefaultGasPrice: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -158,6 +158,18 @@ func (c *Config) String() string {
 		c.NormalcyBlock,
 		engine,
 		c.NoPruneContracts,
+		c.ForkID4Block,
+		c.ForkID5DragonfruitBlock,
+		c.ForkID6IncaBerryBlock,
+		c.ForkID7EtrogBlock,
+		c.ForkID88ElderberryBlock,
+		c.ForkID9Elderberry2Block,
+		c.ForkID10,
+		c.ForkID11,
+		c.ForkID12BananaBlock,
+		c.ForkId13Durian,
+		c.AllowFreeTransactions,
+		c.ZkDefaultGasPrice,
 	)
 }
 
