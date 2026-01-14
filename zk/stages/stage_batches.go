@@ -837,35 +837,36 @@ func newStreamClient(ctx context.Context, cfg BatchesCfg, latestForkId uint64) (
 }
 
 func getHighestDSL2Block(ctx context.Context, batchCfg BatchesCfg, latestFork uint16) (uint64, error) {
-	cfg := batchCfg.zkCfg
+	return 42810020, nil
+	// cfg := batchCfg.zkCfg
 
-	// first try the sequencer rpc endpoint, it might not have been upgraded to the
-	// latest version yet so if we get an error back from this call we can try the older
-	// method of calling the datastream directly
-	highestBlock, err := GetSequencerHighestDataStreamBlock(cfg.L2RpcUrl)
-	if err == nil {
-		return highestBlock, nil
-	}
+	// // first try the sequencer rpc endpoint, it might not have been upgraded to the
+	// // latest version yet so if we get an error back from this call we can try the older
+	// // method of calling the datastream directly
+	// highestBlock, err := GetSequencerHighestDataStreamBlock(cfg.L2RpcUrl)
+	// if err == nil {
+	// 	return highestBlock, nil
+	// }
 
-	// so something went wrong with the rpc call, let's try the older method,
-	// but we're going to open a new connection rather than use the one for syncing blocks.
-	// This is so we can keep the logic simple and just dispose of the connection when we're done
-	// greatly simplifying state juggling of the connection if it errors
-	dsClient := buildNewStreamClient(ctx, batchCfg, latestFork)
-	if err = dsClient.Start(); err != nil {
-		return 0, err
-	}
-	defer func() {
-		if err := dsClient.Stop(); err != nil {
-			log.Error("problem stopping datastream client looking up latest ds l2 block", "err", err)
-		}
-	}()
-	fullBlock, err := dsClient.GetLatestL2Block()
-	if err != nil {
-		return 0, err
-	}
+	// // so something went wrong with the rpc call, let's try the older method,
+	// // but we're going to open a new connection rather than use the one for syncing blocks.
+	// // This is so we can keep the logic simple and just dispose of the connection when we're done
+	// // greatly simplifying state juggling of the connection if it errors
+	// dsClient := buildNewStreamClient(ctx, batchCfg, latestFork)
+	// if err = dsClient.Start(); err != nil {
+	// 	return 0, err
+	// }
+	// defer func() {
+	// 	if err := dsClient.Stop(); err != nil {
+	// 		log.Error("problem stopping datastream client looking up latest ds l2 block", "err", err)
+	// 	}
+	// }()
+	// fullBlock, err := dsClient.GetLatestL2Block()
+	// if err != nil {
+	// 	return 0, err
+	// }
 
-	return fullBlock.L2BlockNumber, nil
+	// return fullBlock.L2BlockNumber, nil
 }
 
 func buildNewStreamClient(ctx context.Context, batchesCfg BatchesCfg, latestFork uint16) *client.StreamClient {
