@@ -1,6 +1,7 @@
 package jsonrpc
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
@@ -10,6 +11,7 @@ import (
 	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/types"
 	zktx "github.com/ledgerwatch/erigon/zk/tx"
+	"github.com/ledgerwatch/log/v3"
 )
 
 func (api *BaseAPI) SetL2RpcUrl(url string) {
@@ -57,7 +59,25 @@ type RPCTransaction struct {
 // newRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
 func newRPCTransaction_zkevm(tx types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int, includeL2TxHash bool) *RPCTransaction {
+	// DEBUG: Log before calling NewRPCTransaction
+	toField := tx.GetTo()
+	var toStr string
+	if toField == nil {
+		toStr = "nil (contract creation)"
+	} else {
+		toStr = toField.Hex()
+	}
+	log.Info(fmt.Sprintf("[DEBUG] newRPCTransaction_zkevm - TxHash: %s, Block: %d, To field from tx.GetTo(): %s", tx.Hash().Hex(), blockNumber, toStr))
+
 	result := NewRPCTransaction(tx, blockHash, blockNumber, index, baseFee)
+
+	// DEBUG: Log after NewRPCTransaction
+	log.Info(fmt.Sprintf("[DEBUG] newRPCTransaction_zkevm - After NewRPCTransaction, result.To: %s", func() string {
+		if result.To == nil {
+			return "nil"
+		}
+		return result.To.Hex()
+	}()))
 
 	if includeL2TxHash {
 		l2TxHash, err := zktx.ComputeL2TxHash(

@@ -452,15 +452,30 @@ func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 	// transactions. For non-protected transactions, the homestead signer is used
 	// because the return value of ChainId is zero for those transactions.
 	chainId := uint256.NewInt(0)
+	toField := tx.GetTo()
+	var toStr string
+	if toField == nil {
+		toStr = "nil (contract creation)"
+	} else {
+		toStr = toField.Hex()
+	}
+	log.Info(fmt.Sprintf("[DEBUG] NewRPCTransaction - TxHash: %s, Block: %d, To field from tx.GetTo(): %s", tx.Hash().Hex(), blockNumber, toStr))
+
 	result := &RPCTransaction{
 		Type:  hexutil.Uint64(tx.Type()),
 		Gas:   hexutil.Uint64(tx.GetGas()),
 		Hash:  tx.Hash(),
 		Input: hexutil.Bytes(tx.GetData()),
 		Nonce: hexutil.Uint64(tx.GetNonce()),
-		To:    tx.GetTo(),
+		To:    toField,
 		Value: (*hexutil.Big)(tx.GetValue().ToBig()),
 	}
+	log.Info(fmt.Sprintf("[DEBUG] NewRPCTransaction - After setting result.To: %s", func() string {
+		if result.To == nil {
+			return "nil"
+		}
+		return result.To.Hex()
+	}()))
 	if t, ok := tx.(*types.BlobTxWrapper); ok {
 		tx = &t.Tx
 	}
@@ -514,6 +529,15 @@ func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		result.BlockNumber = (*hexutil.Big)(new(big.Int).SetUint64(blockNumber))
 		result.TransactionIndex = (*hexutil.Uint64)(&index)
 	}
+	
+	// DEBUG: Log final To field value before returning
+	log.Info(fmt.Sprintf("[DEBUG] NewRPCTransaction - Final result.To: %s (returning)", func() string {
+		if result.To == nil {
+			return "nil"
+		}
+		return result.To.Hex()
+	}()))
+	
 	return result
 }
 

@@ -383,6 +383,19 @@ func (p *BatchesProcessor) writeL2Block(l2Block *types.FullL2Block) error {
 	txCollection := ethTypes.Transactions(txs)
 	txHash := ethTypes.DeriveSha(txCollection)
 
+	// DEBUG: Log transaction To fields when block is received from network
+	log.Info(fmt.Sprintf("[%s] [DEBUG] Block received from network - Block %d, Hash %s", p.logPrefix, l2Block.L2BlockNumber, l2Block.L2Blockhash.Hex()))
+	for i, tx := range txs {
+		to := tx.GetTo()
+		var toStr string
+		if to == nil {
+			toStr = "nil (contract creation)"
+		} else {
+			toStr = to.Hex()
+		}
+		log.Info(fmt.Sprintf("[%s] [DEBUG]   Tx[%d] Hash: %s, To: %s", p.logPrefix, i, tx.Hash().Hex(), toStr))
+	}
+
 	var gasLimit uint64
 	if !p.chainConfig.IsNormalcy(l2Block.L2BlockNumber) {
 		gasLimit = utils.GetBlockGasLimitForFork(l2Block.ForkId)

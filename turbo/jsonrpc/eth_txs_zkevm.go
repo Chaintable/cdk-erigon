@@ -18,6 +18,7 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/zk/sequencer"
 	"github.com/ledgerwatch/erigon/zkevm/jsonrpc/client"
+	"github.com/ledgerwatch/log/v3"
 )
 
 func (api *APIImpl) forwardGetTransactionByHash(rpcUrl string, txnHash common.Hash, includeExtraInfo *bool) (json.RawMessage, error) {
@@ -104,6 +105,16 @@ func (api *APIImpl) GetTransactionByHash(ctx context.Context, txnHash common.Has
 			}
 			return newRPCBorTransaction(borTx, txnHash, blockHash, blockNum, uint64(len(block.Transactions())), baseFee, chainConfig.ChainID), nil
 		}
+
+		// DEBUG: Log transaction To field when serving via RPC
+		to := txn.GetTo()
+		var toStr string
+		if to == nil {
+			toStr = "nil (contract creation)"
+		} else {
+			toStr = to.Hex()
+		}
+		log.Info(fmt.Sprintf("[DEBUG] GetTransactionByHash RPC - TxHash: %s, Block: %d, To: %s", txnHash.Hex(), blockNum, toStr))
 
 		return newRPCTransaction_zkevm(txn, blockHash, blockNum, txnIndex, baseFee, includel2TxHash), nil
 	}
