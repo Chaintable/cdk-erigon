@@ -26,8 +26,8 @@ import (
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
-	"github.com/ledgerwatch/log/v3"
 	"github.com/ledgerwatch/erigon/zk/datastream/client"
+	"github.com/ledgerwatch/log/v3"
 )
 
 const (
@@ -68,7 +68,6 @@ type DatastreamClient interface {
 	GetProgressAtomic() *atomic.Uint64
 	Start() error
 	Stop() error
-	PrepUnwind()
 	HandleStart() error
 }
 
@@ -795,7 +794,11 @@ func newStreamClient(ctx context.Context, cfg BatchesCfg, latestForkId uint64) (
 		}
 	} else {
 		dsClient = cfg.dsClient
-		stopFn = func() {}
+		stopFn = func() {
+			if err := dsClient.Stop(); err != nil {
+				log.Warn("Failed to stop datastream client", "err", err)
+			}
+		}
 	}
 
 	return dsClient, stopFn, nil
