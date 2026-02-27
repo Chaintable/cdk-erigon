@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - "debank"
-      - "xlayer-erigon"
+      - "xlayer"
   workflow_dispatch:
 
 env:
