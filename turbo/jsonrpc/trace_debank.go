@@ -23,6 +23,7 @@ import (
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
+	"github.com/ledgerwatch/erigon/zk/hermez_db"
 	"github.com/ledgerwatch/log/v3"
 )
 
@@ -128,6 +129,7 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		StorageContracts: make([]string, 0),
 	}
 	stateHeader := dtracer.BuildPilelineBlockHeader(block)
+	hermezReader := hermez_db.NewHermezDbReader(dbtx)
 
 	for i, txn := range block.Transactions() {
 		ibs.SetTxContext(txn.Hash(), block.Hash(), i)
@@ -137,7 +139,7 @@ func (api *TraceAPIImpl) DebankBlockRaw(ctx context.Context, blockNrOrHash rpc.B
 		ibs.SetHooks(&tracing.Hooks{
 			OnLog: tracer.OnLog,
 		})
-		effectiveGasPricePercentage, err := api._blockReader.TxnEffectiveGasPricePercentage(ctx, dbtx, txn.Hash())
+		effectiveGasPricePercentage, err := hermezReader.GetEffectiveGasPricePercentage(txn.Hash())
 		if err != nil {
 			return nil, err
 		}
