@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: 294354037686.dkr.ecr.ap-northeast-1.amazonaws.com
-  IMAGE: blockchain-cdk-erigon
+  AWS_REGION: us-east-1
+  REGISTRY: public.ecr.aws/b2h7a5c4/chaintable
+  IMAGE: merlin-writer
   DOCKERFILE: Dockerfile.debian
 
 jobs:
@@ -17,6 +18,9 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     runs-on: [self-hosted, "${{ matrix.arch }}"]
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Install Go
         uses: actions/setup-go@v2
@@ -38,17 +42,28 @@ jobs:
         run: |
           echo "REVISION=$(git rev-parse --short=8 HEAD)" >> $GITHUB_ENV
 
-      - name: Build image and push to ECR
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Dry-run version check
         run: |
-          docker build --build-arg ACCESS_TOKEN=${{ steps.generate-token.outputs.token }} -t ${REGISTRY}/${IMAGE}:${REVISION} -f ${DOCKERFILE} .
-          docker push ${REGISTRY}/${IMAGE}:${REVISION}
-          docker run --name dryrun --rm ${REGISTRY}/${IMAGE}:${REVISION} --version
-          docker rmi ${REGISTRY}/${IMAGE}:${REVISION}
+          docker build --build-arg ACCESS_TOKEN=${{ steps.generate-token.outputs.token }} -t cdk-erigon-dryrun:${REVISION} -f ${DOCKERFILE} .
+          docker run --name dryrun --rm cdk-erigon-dryrun:${REVISION} --version
+          docker rmi cdk-erigon-dryrun:${REVISION}
 
       - name: Build image and push to ECR
         uses: docker/build-push-action@v5
         with:
-          file: Dockerfile.debian
+          file: ${{ env.DOCKERFILE }}
           context: .
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.arch }}-${{ env.REVISION }}
@@ -58,6 +73,9 @@ jobs:
   merge-docker-manifest:
     runs-on: [self-hosted, ops]
     needs: build-package
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -68,10 +86,20 @@ jobs:
         run: |
           echo "REVISION=$(git rev-parse --short=8 HEAD)" >> $GITHUB_ENV
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
       - name: Merge manifest
         run: |
-          docker pull --platform=linux/amd64 ${REGISTRY}/${IMAGE}:amd64-${REVISION}
-          docker pull --platform=linux/arm64 ${REGISTRY}/${IMAGE}:arm64-${REVISION}
           docker buildx imagetools create --tag ${REGISTRY}/${IMAGE}:${REVISION} ${REGISTRY}/${IMAGE}:amd64-${REVISION} ${REGISTRY}/${IMAGE}:arm64-${REVISION}
 
       - name: Lark Notification
