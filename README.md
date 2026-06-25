@@ -167,8 +167,7 @@ remote sequencer (the default behaviour).  It can also run as a sequencer. To en
 cdk-erigon supports migrating a node from being an RPC node to a sequencer and vice versa.  To do this, stop the node, set the `CDK_ERIGON_SEQUENCER` environment variable to the desired value and restart the node.
 Please ensure that you do include the sequencer specific flags found below when running as a sequencer.  You can include these flags when running as an RPC to keep a consistent configuration between the two run modes.
 
-### Docker
-Chaintable CI builds and publishes images for this fork to a public ECR registry (the examples below use the upstream `hermeznetwork/cdk-erigon` image name as a placeholder — substitute the Chaintable image ref).
+### Docker ([DockerHub](https://hub.docker.com/r/hermeznetwork/cdk-erigon))
 The image comes with 3 preinstalled default configs which you may wish to edit according to the config section below, otherwise you can mount your own config to the container as necessary.
 
 A datadir must be mounted to the container to persist the chain data between runs.
