@@ -268,6 +268,9 @@ func (sdb *IntraBlockState) AddLog_zkEvm(log2 *types.Log) {
 	log2.BlockHash = sdb.bhash
 	log2.TxIndex = uint(sdb.txIndex)
 	log2.Index = uint(len(sdb.logs[sdb.thash]))
+	if sdb.tracingHooks != nil && sdb.tracingHooks.OnLog != nil {
+		sdb.tracingHooks.OnLog(log2)
+	}
 	sdb.logs[sdb.thash] = append(sdb.logs[sdb.thash], log2)
 	sdb.logSize++
 }
