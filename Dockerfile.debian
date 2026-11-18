@@ -1,8 +1,7 @@
 # syntax = docker/dockerfile:1.2
-FROM docker.io/library/golang:1.23-bullseye AS builder
+FROM docker.io/library/golang:1.23-bookworm AS builder
 
-RUN apt update
-RUN apt install -y build-essential git bash ca-certificates libstdc++6 libgmp-dev libomp-dev libgtest-dev
+RUN apt-get update && apt-get install -y build-essential git bash ca-certificates libstdc++6 libgmp-dev libomp-dev libgtest-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ADD go.mod go.mod
@@ -10,6 +9,7 @@ ADD go.sum go.sum
 ADD erigon-lib/go.mod erigon-lib/go.mod
 ADD erigon-lib/go.sum erigon-lib/go.sum
 
+ENV GOPROXY="https://proxy.golang.org,https://goproxy.cn,direct"
 RUN go mod download
 ADD . .
 
@@ -33,12 +33,10 @@ RUN --mount=type=cache,target=/root/.cache \
 
 # RUN make db-tools
 
-FROM docker.io/library/debian:bullseye
+FROM docker.io/library/debian:bookworm
 
 # install required runtime libs, along with some helpers for debugging
-RUN apt update
-RUN apt install -y ca-certificates libstdc++6 tzdata
-RUN apt install -y curl jq dnsutils
+RUN apt-get update && apt-get install -y ca-certificates libstdc++6 tzdata curl jq dnsutils && rm -rf /var/lib/apt/lists/*
 
 # Setup user and group
 #
